@@ -1,9 +1,12 @@
 package scoop
 
 import (
-	"encoding/json"
 	"os"
+
+	jsoniter "github.com/json-iterator/go"
 )
+
+var jsonFast = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // Manifest represents a Scoop app manifest JSON file.
 // Fields use `any` where the Scoop spec allows multiple types.
@@ -32,7 +35,7 @@ func ReadManifest(path string) (*Manifest, error) {
 		return nil, err
 	}
 	var m Manifest
-	if err := json.Unmarshal(data, &m); err != nil {
+	if err := jsonFast.Unmarshal(data, &m); err != nil {
 		return nil, err
 	}
 	return &m, nil

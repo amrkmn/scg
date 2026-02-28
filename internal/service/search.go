@@ -43,17 +43,29 @@ func NewSearchService(ctx AppContext) *SearchService {
 // SearchBuckets scans all relevant buckets concurrently and returns matching results.
 func (s *SearchService) SearchBuckets(query string, opts SearchOptions) []SearchResult {
 	buckets := s.findAllBuckets(opts)
+	if len(buckets) == 0 {
+		return nil
+	}
 
-	ch := make(chan []SearchResult, len(buckets))
+	lowerQuery := strings.ToLower(query)
+
+	// Fan out: one goroutine per bucket
+	type bucketResult struct {
+		bucket  BucketInfo
+		results []SearchResult
+	}
+	ch := make(chan bucketResult, len(buckets))
+
 	for _, b := range buckets {
 		go func(bucket BucketInfo) {
-			ch <- s.scanBucket(bucket, query, opts)
+			ch <- bucketResult{bucket, s.scanBucket(bucket, query, lowerQuery, opts)}
 		}(b)
 	}
 
 	var all []SearchResult
 	for range buckets {
-		all = append(all, <-ch...)
+		r := <-ch
+		all = append(all, r.results...)
 	}
 	return all
 }
@@ -84,7 +96,7 @@ func (s *SearchService) findAllBuckets(opts SearchOptions) []BucketInfo {
 
 // scanBucket scans a single bucket for manifests matching query,
 // parsing JSON files in parallel using a worker pool.
-func (s *SearchService) scanBucket(bucket BucketInfo, query string, opts SearchOptions) []SearchResult {
+func (s *SearchService) scanBucket(bucket BucketInfo, query, lowerQuery string, opts SearchOptions) []SearchResult {
 	manifestDir := FindBucketDir(bucket.Path)
 	entries, err := os.ReadDir(manifestDir)
 	if err != nil {
@@ -102,7 +114,7 @@ func (s *SearchService) scanBucket(bucket BucketInfo, query string, opts SearchO
 			continue
 		}
 		appName := strings.TrimSuffix(e.Name(), ".json")
-		if !matchQuery(appName, query, opts.CaseSensitive) {
+		if !matchQuery(appName, query, lowerQuery, opts.CaseSensitive) {
 			continue
 		}
 		if opts.InstalledOnly && opts.InstalledApps != nil {
@@ -120,6 +132,26 @@ func (s *SearchService) scanBucket(bucket BucketInfo, query string, opts SearchO
 		return nil
 	}
 
+	// For small candidate sets, sequential processing is faster than goroutine overhead
+	if len(candidates) <= runtime.GOMAXPROCS(0) {
+		var results []SearchResult
+		for _, c := range candidates {
+			m, err := scoop.ReadManifest(c.path)
+			if err != nil {
+				continue
+			}
+			results = append(results, SearchResult{
+				Name:        c.name,
+				Version:     m.Version,
+				Description: m.Description,
+				Binaries:    ExtractBinaries(m.Bin),
+				Bucket:      bucket.Name,
+				Scope:       bucket.Scope,
+			})
+		}
+		return results
+	}
+
 	// Parse manifests in parallel with a worker pool sized to GOMAXPROCS.
 	workers := runtime.GOMAXPROCS(0)
 	if workers > len(candidates) {
@@ -134,6 +166,7 @@ func (s *SearchService) scanBucket(bucket BucketInfo, query string, opts SearchO
 
 	resultCh := make(chan SearchResult, len(candidates))
 	var wg sync.WaitGroup
+
 	for range workers {
 		wg.Add(1)
 		go func() {
@@ -162,6 +195,7 @@ func (s *SearchService) scanBucket(bucket BucketInfo, query string, opts SearchO
 			}
 		}()
 	}
+
 	wg.Wait()
 	close(resultCh)
 
@@ -212,9 +246,9 @@ func ExtractBinaries(bin any) []string {
 	return nil
 }
 
-func matchQuery(name, query string, caseSensitive bool) bool {
-	if !caseSensitive {
-		return strings.Contains(strings.ToLower(name), strings.ToLower(query))
+func matchQuery(name, query, lowerQuery string, caseSensitive bool) bool {
+	if caseSensitive {
+		return strings.Contains(name, query)
 	}
-	return strings.Contains(name, query)
+	return strings.Contains(strings.ToLower(name), lowerQuery)
 }

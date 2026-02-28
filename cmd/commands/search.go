@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strings"
-	"sync"
 
 	"github.com/spf13/cobra"
 	"go.noz.one/scg/internal/cmdctx"
@@ -30,64 +28,14 @@ func NewSearchCommand() *cobra.Command {
 			}
 			query := args[0]
 
-			spinner := ui.NewSpinner(fmt.Sprintf("Searching for '%s'...", query))
-			spinner.Start()
+			results := ctx.Services.Search.SearchBuckets(query, service.SearchOptions{
+				Bucket:        flagBucket,
+				CaseSensitive: false,
+				GlobalOnly:    flagGlobal,
+				InstalledOnly: flagInstalled,
+			})
 
-			// Run ListInstalled and SearchBuckets concurrently.
-			var (
-				installed []service.InstalledApp
-				results   []service.SearchResult
-				wg        sync.WaitGroup
-			)
-
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				installed, _ = ctx.Services.Apps.ListInstalled("")
-			}()
-
-			// SearchBuckets itself fans out one goroutine per bucket, each of
-			// which now uses an intra-bucket worker pool — so this blocks until
-			// all buckets are done, but all buckets run in parallel.
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				// Pass a nil InstalledApps for now; we'll mark installed below
-				// once both goroutines finish.
-				results = ctx.Services.Search.SearchBuckets(query, service.SearchOptions{
-					Bucket:        flagBucket,
-					CaseSensitive: false,
-					GlobalOnly:    flagGlobal,
-					InstalledOnly: false, // filter after merge
-				})
-			}()
-
-			wg.Wait()
-			spinner.Stop()
-
-			// Build installed map now that both are done.
-			installedMap := make(map[string]*service.InstalledApp, len(installed))
-			for i := range installed {
-				a := &installed[i]
-				installedMap[strings.ToLower(a.Name)] = a
-			}
-
-			// Apply installed marking and installed-only filter post-search.
-			var filtered []service.SearchResult
-			for i := range results {
-				r := &results[i]
-				if app, ok := installedMap[strings.ToLower(r.Name)]; ok {
-					if app.Bucket == "" || strings.EqualFold(app.Bucket, r.Bucket) {
-						r.IsInstalled = true
-					}
-				}
-				if flagInstalled && !r.IsInstalled {
-					continue
-				}
-				filtered = append(filtered, *r)
-			}
-
-			if len(filtered) == 0 {
+			if len(results) == 0 {
 				fmt.Fprintf(os.Stdout, "%s No results found for '%s'.\n", ui.Warning("!"), query)
 				return nil
 			}
@@ -95,7 +43,7 @@ func NewSearchCommand() *cobra.Command {
 			// Group by bucket.
 			bucketMap := make(map[string][]service.SearchResult)
 			bucketOrder := []string{}
-			for _, r := range filtered {
+			for _, r := range results {
 				key := r.Bucket
 				if _, ok := bucketMap[key]; !ok {
 					bucketOrder = append(bucketOrder, key)
@@ -139,7 +87,7 @@ func NewSearchCommand() *cobra.Command {
 				fmt.Fprintln(os.Stdout)
 			}
 
-			fmt.Fprintf(os.Stdout, "%s\n", ui.Blue(fmt.Sprintf("Found %d package(s).", len(filtered))))
+			fmt.Fprintf(os.Stdout, "%s\n", ui.Blue(fmt.Sprintf("Found %d package(s).", len(results))))
 			return nil
 		},
 	}
