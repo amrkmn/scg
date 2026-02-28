@@ -21,7 +21,11 @@ type Spinner struct {
 	frame   int
 }
 
-var spinnerFrames = []string{"   ", ".  ", ".. ", "..."}
+// SpinnerFrames are the animation frames used by Spinner, exported for reuse.
+var SpinnerFrames = []string{"   ", ".  ", ".. ", "..."}
+
+// SpinnerInterval is the tick interval used by Spinner, exported for reuse.
+const SpinnerInterval = 150 * time.Millisecond
 
 // NewSpinner creates a new Spinner with the given message.
 func NewSpinner(message string) *Spinner {
@@ -37,7 +41,7 @@ func (s *Spinner) Start() {
 	}
 	s.running = true
 	s.done = make(chan struct{})
-	s.ticker = time.NewTicker(150 * time.Millisecond)
+	s.ticker = time.NewTicker(SpinnerInterval)
 	go func() {
 		for {
 			select {
@@ -45,7 +49,7 @@ func (s *Spinner) Start() {
 				return
 			case <-s.ticker.C:
 				s.mu.Lock()
-				f := spinnerFrames[s.frame%len(spinnerFrames)]
+				f := SpinnerFrames[s.frame%len(SpinnerFrames)]
 				s.frame++
 				msg := s.message
 				s.mu.Unlock()

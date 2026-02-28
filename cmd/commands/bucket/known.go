@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amrkmn/scg/internal/known"
-	"github.com/amrkmn/scg/internal/ui"
 	"github.com/spf13/cobra"
+	"go.noz.one/scg/internal/known"
+	"go.noz.one/scg/internal/ui"
 )
 
 func NewKnownCommand() *cobra.Command {

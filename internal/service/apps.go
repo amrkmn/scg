@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/amrkmn/scg/internal/scoop"
+	"go.noz.one/scg/internal/scoop"
 )
 
 // AppContext is a minimal interface for what services need from app.Context.

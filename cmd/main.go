@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/amrkmn/scg/cmd/commands"
+	"go.noz.one/scg/cmd/commands"
 )
 
 var Version = "dev"

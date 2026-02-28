@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/amrkmn/scg/internal/git"
-	"github.com/amrkmn/scg/internal/scoop"
+	"go.noz.one/scg/internal/git"
+	"go.noz.one/scg/internal/scoop"
 )
 
 // BucketInfo holds metadata about an installed Scoop bucket.
@@ -161,31 +161,23 @@ func (s *BucketService) Remove(name string, scope scoop.InstallScope) error {
 	return os.RemoveAll(bucketPath)
 }
 
-// UpdateBuckets updates the named buckets with a goroutine pool.
-// maxWorkers controls the maximum concurrency.
-// onStart is called when a bucket starts updating, onComplete when it finishes.
+// UpdateBuckets updates the named buckets concurrently (one goroutine per bucket).
+// onStart is called when a bucket begins updating, onComplete when it finishes.
 func (s *BucketService) UpdateBuckets(
 	names []string,
 	scope scoop.InstallScope,
-	maxWorkers int,
 	showChangelog bool,
 	onStart func(name string),
 	onComplete func(result UpdateResult),
 ) []UpdateResult {
-	if maxWorkers <= 0 {
-		maxWorkers = 4
-	}
-	sem := make(chan struct{}, maxWorkers)
 	ch := make(chan UpdateResult, len(names))
 
 	for _, name := range names {
 		go func(n string) {
-			sem <- struct{}{}
 			if onStart != nil {
 				onStart(n)
 			}
 			result := s.updateOne(n, scope, showChangelog)
-			<-sem
 			if onComplete != nil {
 				onComplete(result)
 			}
@@ -200,7 +192,9 @@ func (s *BucketService) UpdateBuckets(
 	return results
 }
 
-// updateOne performs a git pull on a single bucket and returns the result.
+// updateOne performs a fetch+merge on a single bucket and returns the result.
+// It returns "up-to-date" immediately if the remote has no new commits,
+// skipping the merge entirely.
 func (s *BucketService) updateOne(name string, scope scoop.InstallScope, showChangelog bool) UpdateResult {
 	paths := scoop.ResolvePaths(scope)
 	bucketPath := filepath.Join(paths.Buckets, name)
@@ -209,26 +203,22 @@ func (s *BucketService) updateOne(name string, scope scoop.InstallScope, showCha
 		return UpdateResult{Name: name, Status: "failed", Error: os.ErrNotExist}
 	}
 
-	hashBefore, err := git.GetCommitHash("HEAD", bucketPath)
-	if err != nil {
-		return UpdateResult{Name: name, Status: "failed", Error: err}
-	}
-
-	if err := git.Pull(bucketPath, git.PullOptions{Quiet: true}); err != nil {
-		return UpdateResult{Name: name, Status: "failed", Error: err}
-	}
-
-	hashAfter, err := git.GetCommitHash("HEAD", bucketPath)
-	if err != nil {
-		return UpdateResult{Name: name, Status: "failed", Error: err}
-	}
-
-	if hashBefore == hashAfter {
-		return UpdateResult{Name: name, Status: "up-to-date"}
-	}
-
-	result := UpdateResult{Name: name, Status: "updated"}
+	var hashBefore string
 	if showChangelog {
+		var err error
+		hashBefore, err = git.GetCommitHash("HEAD", bucketPath)
+		if err != nil {
+			return UpdateResult{Name: name, Status: "failed", Error: err}
+		}
+	}
+
+	status, _, err := git.FetchAndMerge(bucketPath)
+	if err != nil {
+		return UpdateResult{Name: name, Status: "failed", Error: err}
+	}
+
+	result := UpdateResult{Name: name, Status: status}
+	if showChangelog && status == "updated" && hashBefore != "" {
 		commits, _ := git.GetCommitsSince(hashBefore, bucketPath)
 		result.Commits = commits
 	}

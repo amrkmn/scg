@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/amrkmn/scg/internal/ui"
+	"go.noz.one/scg/internal/ui"
 )
 
 // Logger defines the logging interface used throughout scg.

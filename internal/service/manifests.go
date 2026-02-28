@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amrkmn/scg/internal/scoop"
+	"go.noz.one/scg/internal/scoop"
 )
 
 // FoundManifest represents a located manifest file and its parsed content.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/amrkmn/scg/internal/scoop"
+	"go.noz.one/scg/internal/scoop"
 )
 
 // SearchResult holds a single search result from a bucket scan.

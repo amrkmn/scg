@@ -1,10 +1,10 @@
 package commands
 
 import (
-	"github.com/amrkmn/scg/cmd/commands/bucket"
-	"github.com/amrkmn/scg/internal/app"
-	"github.com/amrkmn/scg/internal/cmdctx"
 	"github.com/spf13/cobra"
+	"go.noz.one/scg/cmd/commands/bucket"
+	"go.noz.one/scg/internal/app"
+	"go.noz.one/scg/internal/cmdctx"
 )
 
 // NewRootCommand constructs the root cobra command and wires all subcommands.

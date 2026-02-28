@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/amrkmn/scg/internal/cmdctx"
-	"github.com/amrkmn/scg/internal/scoop"
-	"github.com/amrkmn/scg/internal/ui"
 	"github.com/spf13/cobra"
+	"go.noz.one/scg/internal/cmdctx"
+	"go.noz.one/scg/internal/scoop"
+	"go.noz.one/scg/internal/ui"
 )
 
 func NewRemoveCommand() *cobra.Command {

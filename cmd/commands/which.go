@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/amrkmn/scg/internal/cmdctx"
 	"github.com/spf13/cobra"
+	"go.noz.one/scg/internal/cmdctx"
 )
 
 // NewWhichCommand creates the which subcommand.

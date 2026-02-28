@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/amrkmn/scg/internal/scoop"
+	"go.noz.one/scg/internal/scoop"
 )
 
 // AppStatusResult holds the update status for a single installed application.

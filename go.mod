@@ -1,4 +1,4 @@
-module github.com/amrkmn/scg
+module go.noz.one/scg
 
 go 1.22
 

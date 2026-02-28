@@ -145,6 +145,36 @@ func Pull(repoPath string, opts PullOptions) error {
 	return err
 }
 
+// FetchAndMerge fetches from origin and fast-forward merges only if the remote
+// has new commits. Returns ("up-to-date", nil) if already current, ("updated", nil)
+// if new commits were merged, or ("", err) on failure.
+func FetchAndMerge(repoPath string) (status string, commits []string, err error) {
+	if _, err = run(repoPath, "fetch", "--quiet", "origin"); err != nil {
+		return "", nil, err
+	}
+
+	head, err := run(repoPath, "rev-parse", "HEAD")
+	if err != nil {
+		return "", nil, err
+	}
+
+	fetchHead, err := run(repoPath, "rev-parse", "FETCH_HEAD")
+	if err != nil {
+		return "", nil, err
+	}
+
+	if head == fetchHead {
+		return "up-to-date", nil, nil
+	}
+
+	// Fast-forward merge
+	if _, err = run(repoPath, "merge", "--ff-only", "--quiet", "FETCH_HEAD"); err != nil {
+		return "", nil, err
+	}
+
+	return "updated", nil, nil
+}
+
 // Fetch runs git fetch --quiet in the given repository directory.
 func Fetch(repoPath string) error {
 	_, err := run(repoPath, "fetch", "--quiet")

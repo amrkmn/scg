@@ -5,19 +5,21 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
-	"github.com/amrkmn/scg/internal/cmdctx"
-	"github.com/amrkmn/scg/internal/scoop"
-	"github.com/amrkmn/scg/internal/service"
-	"github.com/amrkmn/scg/internal/ui"
 	"github.com/spf13/cobra"
+	"go.noz.one/scg/internal/cmdctx"
+	"go.noz.one/scg/internal/scoop"
+	"go.noz.one/scg/internal/service"
+	"go.noz.one/scg/internal/ui"
 )
 
 // updateState tracks per-bucket display state for the animated UI
 type updateState struct {
-	name   string
-	status string // "updating" | "updated" | "up-to-date" | "failed"
-	err    error
+	name      string
+	status    string // "updating" | "updated" | "up-to-date" | "failed"
+	err       error
+	changelog []string // commit lines to display after the status line
 }
 
 func NewUpdateCommand() *cobra.Command {
@@ -56,6 +58,7 @@ func NewUpdateCommand() *cobra.Command {
 
 			// Initialize display state for each bucket
 			var mu sync.Mutex
+			var frame int
 			states := make([]updateState, len(names))
 			nameIndex := make(map[string]int, len(names))
 			for i, name := range names {
@@ -64,7 +67,33 @@ func NewUpdateCommand() *cobra.Command {
 			}
 
 			// Print initial state (all "updating...")
-			printStates(states)
+			printStates(states, 0)
+
+			// Background ticker: animate the dots for buckets still "updating"
+			ticker := time.NewTicker(ui.SpinnerInterval)
+			tickerDone := make(chan struct{})
+			go func() {
+				for {
+					select {
+					case <-tickerDone:
+						return
+					case <-ticker.C:
+						mu.Lock()
+						anyUpdating := false
+						for _, s := range states {
+							if s.status == "updating" {
+								anyUpdating = true
+								break
+							}
+						}
+						if anyUpdating {
+							frame++
+							reprintStates(states, frame)
+						}
+						mu.Unlock()
+					}
+				}
+			}()
 
 			onStart := func(name string) {
 				mu.Lock()
@@ -72,8 +101,7 @@ func NewUpdateCommand() *cobra.Command {
 				if i, ok := nameIndex[name]; ok {
 					states[i].status = "updating"
 				}
-				// Move cursor up and reprint
-				reprintStates(states, len(names))
+				reprintStates(states, frame)
 			}
 
 			onComplete := func(result service.UpdateResult) {
@@ -82,20 +110,29 @@ func NewUpdateCommand() *cobra.Command {
 				if i, ok := nameIndex[result.Name]; ok {
 					states[i].status = result.Status
 					states[i].err = result.Error
-				}
-				// Move cursor up and reprint
-				reprintStates(states, len(names))
-
-				// Print changelog commits if requested
-				if changelog && result.Status == "updated" && len(result.Commits) > 0 {
-					fmt.Printf("\n  %s changelog:\n", ui.Bold(result.Name))
-					for _, commit := range result.Commits {
-						fmt.Printf("    %s\n", commit)
+					// Store changelog lines in state so reprintStates can account for them
+					if changelog && result.Status == "updated" && len(result.Commits) > 0 {
+						lines := make([]string, 0, len(result.Commits)+1)
+						lines = append(lines, fmt.Sprintf("  %s changelog:", ui.Bold(result.Name)))
+						for _, commit := range result.Commits {
+							lines = append(lines, fmt.Sprintf("    %s", commit))
+						}
+						states[i].changelog = lines
 					}
 				}
+				reprintStates(states, frame)
 			}
 
-			results := ctx.Services.Buckets.UpdateBuckets(names, scope, 4, changelog, onStart, onComplete)
+			results := ctx.Services.Buckets.UpdateBuckets(names, scope, changelog, onStart, onComplete)
+
+			// Stop the animation ticker and wait for the goroutine to exit
+			ticker.Stop()
+			// Drain any pending tick that fired between Stop() and close()
+			select {
+			case <-ticker.C:
+			default:
+			}
+			close(tickerDone)
 
 			// Final summary
 			updated := 0
@@ -138,28 +175,45 @@ func NewUpdateCommand() *cobra.Command {
 	return cmd
 }
 
-// printStates prints all bucket states for the first time
-func printStates(states []updateState) {
+// totalLines returns the total number of lines occupied by all states (status + changelog)
+func totalLines(states []updateState) int {
+	n := len(states)
 	for _, s := range states {
-		fmt.Println(formatBucketLine(s))
+		n += len(s.changelog)
+	}
+	return n
+}
+
+// printStates prints all bucket states for the first time
+func printStates(states []updateState, frame int) {
+	for _, s := range states {
+		fmt.Println(formatBucketLine(s, frame))
+		for _, line := range s.changelog {
+			fmt.Println(line)
+		}
 	}
 }
 
-// reprintStates moves cursor up N lines and reprints
-func reprintStates(states []updateState, n int) {
-	// Move cursor up n lines
+// reprintStates moves cursor up to the top of the state block and reprints everything
+func reprintStates(states []updateState, frame int) {
+	n := totalLines(states)
 	fmt.Printf("\x1b[%dA", n)
 	for _, s := range states {
-		// Clear line and reprint
-		fmt.Printf("\r\x1b[2K%s\n", formatBucketLine(s))
+		fmt.Printf("\r\x1b[2K%s\n", formatBucketLine(s, frame))
+		for _, line := range s.changelog {
+			fmt.Printf("\r\x1b[2K%s\n", line)
+		}
 	}
 }
 
+var dotFrames = ui.SpinnerFrames
+
 // formatBucketLine returns a single formatted line for a bucket update state
-func formatBucketLine(s updateState) string {
+func formatBucketLine(s updateState, frame int) string {
 	switch s.status {
 	case "updating":
-		return fmt.Sprintf("  %s  %s", ui.Dim("..."), ui.Bold(s.name))
+		dots := dotFrames[frame%len(dotFrames)]
+		return fmt.Sprintf("  %s  %s", ui.Dim(dots), ui.Bold(s.name))
 	case "updated":
 		return fmt.Sprintf("  %s  %s  %s", ui.Success("✓"), ui.Bold(s.name), ui.Dim("updated"))
 	case "up-to-date":

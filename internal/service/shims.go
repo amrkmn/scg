@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/amrkmn/scg/internal/scoop"
+	"go.noz.one/scg/internal/scoop"
 )
 
 // ShimService finds executables in Scoop shims and PATH.

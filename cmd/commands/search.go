@@ -7,10 +7,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/amrkmn/scg/internal/cmdctx"
-	"github.com/amrkmn/scg/internal/service"
-	"github.com/amrkmn/scg/internal/ui"
 	"github.com/spf13/cobra"
+	"go.noz.one/scg/internal/cmdctx"
+	"go.noz.one/scg/internal/service"
+	"go.noz.one/scg/internal/ui"
 )
 
 // NewSearchCommand creates the search subcommand.

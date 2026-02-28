@@ -3,8 +3,8 @@ package cmdctx
 import (
 	"context"
 
-	"github.com/amrkmn/scg/internal/app"
 	"github.com/spf13/cobra"
+	"go.noz.one/scg/internal/app"
 )
 
 type contextKey struct{}

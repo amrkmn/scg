@@ -1,6 +1,6 @@
 package app
 
-import "github.com/amrkmn/scg/internal/service"
+import "go.noz.one/scg/internal/service"
 
 // Context is the central dependency-injection container passed to all commands.
 type Context struct {
