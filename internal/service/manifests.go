@@ -89,7 +89,7 @@ func (s *ManifestService) FindAllManifests(input string) []FoundManifest {
 		if bucketName != "" && !strings.EqualFold(b.Name, bucketName) {
 			continue
 		}
-		manifestDir := FindBucketDir(b.Path)
+		manifestDir := b.ManifestDir
 		mPath := filepath.Join(manifestDir, appName+".json")
 		m, err := scoop.ReadManifest(mPath)
 		if err != nil {

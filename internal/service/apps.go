@@ -181,25 +181,6 @@ func readAppInfo(name string, paths scoop.ScoopPaths) (InstalledApp, error) {
 }
 
 func containsFold(s, sub string) bool {
-	if sub == "" {
-		return true
-	}
-	sLower := toLower(s)
-	subLower := toLower(sub)
-	return contains(sLower, subLower)
-}
-
-func toLower(s string) string {
-	b := []byte(s)
-	for i, c := range b {
-		if c >= 'A' && c <= 'Z' {
-			b[i] = c + 32
-		}
-	}
-	return string(b)
-}
-
-func contains(s, sub string) bool {
 	if len(sub) == 0 {
 		return true
 	}
@@ -207,7 +188,22 @@ func contains(s, sub string) bool {
 		return false
 	}
 	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
+		match := true
+		for j := 0; j < len(sub); j++ {
+			c1 := s[i+j]
+			if c1 >= 'A' && c1 <= 'Z' {
+				c1 += 'a' - 'A'
+			}
+			c2 := sub[j]
+			if c2 >= 'A' && c2 <= 'Z' {
+				c2 += 'a' - 'A'
+			}
+			if c1 != c2 {
+				match = false
+				break
+			}
+		}
+		if match {
 			return true
 		}
 	}

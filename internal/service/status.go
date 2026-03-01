@@ -3,7 +3,6 @@ package service
 import (
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -24,7 +23,9 @@ type AppStatusResult struct {
 
 // StatusService checks the update status of installed apps.
 type StatusService struct {
-	ctx AppContext
+	ctx           AppContext
+	installedSet  map[string]bool
+	installedOnce sync.Once
 }
 
 // NewStatusService creates a StatusService.
@@ -103,7 +104,7 @@ func (s *StatusService) findLatestVersion(app InstalledApp, buckets []BucketInfo
 	deprecated := false
 
 	checkManifest := func(b BucketInfo) {
-		manifestDir := FindBucketDir(b.Path)
+		manifestDir := b.ManifestDir
 		manifestPath := filepath.Join(manifestDir, app.Name+".json")
 		m, err := scoop.ReadManifest(manifestPath)
 		if err != nil {
@@ -144,6 +145,22 @@ func (s *StatusService) findLatestVersion(app InstalledApp, buckets []BucketInfo
 	return best, deprecated
 }
 
+func (s *StatusService) getInstalledSet() map[string]bool {
+	s.installedOnce.Do(func() {
+		appsSvc := &AppsService{ctx: s.ctx}
+		installed, err := appsSvc.ListInstalled("")
+		if err == nil {
+			s.installedSet = make(map[string]bool, len(installed))
+			for _, a := range installed {
+				s.installedSet[strings.ToLower(a.Name)] = true
+			}
+		} else {
+			s.installedSet = make(map[string]bool)
+		}
+	})
+	return s.installedSet
+}
+
 // findMissingDeps checks whether the app's dependencies are installed.
 func (s *StatusService) findMissingDeps(app InstalledApp, buckets []BucketInfo) []string {
 	// Load manifest to get depends field.
@@ -152,7 +169,7 @@ func (s *StatusService) findMissingDeps(app InstalledApp, buckets []BucketInfo) 
 		if app.Bucket != "" && !strings.EqualFold(b.Name, app.Bucket) {
 			continue
 		}
-		manifestDir := FindBucketDir(b.Path)
+		manifestDir := b.ManifestDir
 		m, err := scoop.ReadManifest(filepath.Join(manifestDir, app.Name+".json"))
 		if err != nil {
 			continue
@@ -165,16 +182,7 @@ func (s *StatusService) findMissingDeps(app InstalledApp, buckets []BucketInfo) 
 		return nil
 	}
 
-	// Get installed app names.
-	appsSvc := &AppsService{ctx: s.ctx}
-	installed, err := appsSvc.ListInstalled("")
-	if err != nil {
-		return nil
-	}
-	installedSet := make(map[string]bool, len(installed))
-	for _, a := range installed {
-		installedSet[strings.ToLower(a.Name)] = true
-	}
+	installedSet := s.getInstalledSet()
 
 	var missing []string
 	for _, dep := range depends {
@@ -213,79 +221,57 @@ func toStringSlice(v any) []string {
 	return nil
 }
 
-// parseVersionString converts a version string into a comparable 4-part integer slice.
+// parseVersionString converts a version string into a comparable 4-part integer array.
 // e.g. "1.2.3-beta" -> [1, 2, 3, 0]
-func parseVersionString(v string) []int {
-	// Split on ., -, _, +
-	parts := splitVersion(v)
-	result := make([]int, 0, 4)
-	for _, p := range parts {
-		// Take leading digit sequence.
-		n := leadingInt(p)
-		result = append(result, n)
-		if len(result) >= 4 {
-			break
+func parseVersionString(v string) [4]int {
+	var result [4]int
+	idx := 0
+	start := 0
+	inPart := false
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		if c == '.' || c == '-' || c == '_' || c == '+' {
+			if inPart {
+				result[idx] = leadingInt(v[start:i])
+				idx++
+				if idx >= 4 {
+					return result
+				}
+				inPart = false
+			}
+		} else {
+			if !inPart {
+				start = i
+				inPart = true
+			}
 		}
 	}
-	// Pad to 4 parts.
-	for len(result) < 4 {
-		result = append(result, 0)
+	if inPart && idx < 4 {
+		result[idx] = leadingInt(v[start:])
 	}
 	return result
 }
 
-func splitVersion(v string) []string {
-	var parts []string
-	current := strings.Builder{}
-	for _, c := range v {
-		if c == '.' || c == '-' || c == '_' || c == '+' {
-			if current.Len() > 0 {
-				parts = append(parts, current.String())
-				current.Reset()
-			}
-		} else {
-			current.WriteRune(c)
-		}
-	}
-	if current.Len() > 0 {
-		parts = append(parts, current.String())
-	}
-	return parts
-}
-
 func leadingInt(s string) int {
-	i := 0
-	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-		i++
-	}
-	if i == 0 {
-		return 0
-	}
-	n, err := strconv.Atoi(s[:i])
-	if err != nil {
-		return 0
+	n := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= '0' && c <= '9' {
+			n = n*10 + int(c-'0')
+		} else {
+			break
+		}
 	}
 	return n
 }
 
 // compareVersionArrays returns -1 if a < b, 0 if equal, 1 if a > b.
-func compareVersionArrays(a, b []int) int {
-	length := len(a)
-	if len(b) > length {
-		length = len(b)
-	}
-	for i := 0; i < length; i++ {
-		var av, bv int
-		if i < len(a) {
-			av = a[i]
-		}
-		if i < len(b) {
-			bv = b[i]
-		}
-		if av < bv {
+func compareVersionArrays(a, b [4]int) int {
+	for i := 0; i < 4; i++ {
+		if a[i] < b[i] {
 			return -1
 		}
-		if av > bv {
+		if a[i] > b[i] {
 			return 1
 		}
 	}
@@ -306,7 +292,7 @@ func GetInstalledAppsForScope(apps []InstalledApp, scope scoop.InstallScope) []I
 // ExistsInBuckets checks if an app manifest exists in any of the given buckets.
 func ExistsInBuckets(appName string, buckets []BucketInfo) bool {
 	for _, b := range buckets {
-		manifestDir := FindBucketDir(b.Path)
+		manifestDir := b.ManifestDir
 		if _, err := os.Stat(filepath.Join(manifestDir, appName+".json")); err == nil {
 			return true
 		}

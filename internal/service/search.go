@@ -97,7 +97,7 @@ func (s *SearchService) findAllBuckets(opts SearchOptions) []BucketInfo {
 // scanBucket scans a single bucket for manifests matching query,
 // parsing JSON files in parallel using a worker pool.
 func (s *SearchService) scanBucket(bucket BucketInfo, query, lowerQuery string, opts SearchOptions) []SearchResult {
-	manifestDir := FindBucketDir(bucket.Path)
+	manifestDir := bucket.ManifestDir
 	entries, err := os.ReadDir(manifestDir)
 	if err != nil {
 		return nil
@@ -114,13 +114,13 @@ func (s *SearchService) scanBucket(bucket BucketInfo, query, lowerQuery string, 
 			continue
 		}
 		appName := strings.TrimSuffix(e.Name(), ".json")
-		if !matchQuery(appName, query, lowerQuery, opts.CaseSensitive) {
-			continue
-		}
 		if opts.InstalledOnly && opts.InstalledApps != nil {
 			if _, ok := opts.InstalledApps[strings.ToLower(appName)]; !ok {
 				continue
 			}
+		}
+		if !matchQuery(appName, query, lowerQuery, opts.CaseSensitive) {
+			continue
 		}
 		candidates = append(candidates, candidate{
 			name: appName,
@@ -250,5 +250,36 @@ func matchQuery(name, query, lowerQuery string, caseSensitive bool) bool {
 	if caseSensitive {
 		return strings.Contains(name, query)
 	}
-	return strings.Contains(strings.ToLower(name), lowerQuery)
+	if len(lowerQuery) == 0 {
+		return true
+	}
+	return containsIgnoreCase(name, lowerQuery)
+}
+
+// containsIgnoreCase checks if s contains substr (which MUST be already lowercase)
+// without allocating strings for intermediate lowercasing.
+func containsIgnoreCase(s, lowerSubstr string) bool {
+	if len(lowerSubstr) == 0 {
+		return true
+	}
+	if len(lowerSubstr) > len(s) {
+		return false
+	}
+	for i := 0; i <= len(s)-len(lowerSubstr); i++ {
+		match := true
+		for j := 0; j < len(lowerSubstr); j++ {
+			c := s[i+j]
+			if c >= 'A' && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			if c != lowerSubstr[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
 }

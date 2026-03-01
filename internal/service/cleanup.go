@@ -117,7 +117,7 @@ func (s *CleanupService) CleanupApp(appName string, scope scoop.InstallScope, op
 				}
 				cacheFile := filepath.Join(cacheDir, e.Name())
 				var size int64
-				if fi, err := os.Stat(cacheFile); err == nil {
+				if fi, err := e.Info(); err == nil {
 					size = fi.Size()
 				}
 				if opts.DryRun {
@@ -142,11 +142,11 @@ func getDirectorySize(dirPath string) int64 {
 		return 0
 	}
 	for _, e := range entries {
-		path := filepath.Join(dirPath, e.Name())
 		if e.IsDir() {
+			path := filepath.Join(dirPath, e.Name())
 			total += getDirectorySize(path)
 		} else {
-			if fi, err := os.Stat(path); err == nil {
+			if fi, err := e.Info(); err == nil {
 				total += fi.Size()
 			}
 		}

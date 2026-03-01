@@ -11,12 +11,13 @@ import (
 
 // BucketInfo holds metadata about an installed Scoop bucket.
 type BucketInfo struct {
-	Name      string
-	Path      string
-	Source    string
-	Updated   time.Time
-	Manifests int
-	Scope     scoop.InstallScope
+	Name        string
+	Path        string
+	ManifestDir string
+	Source      string
+	Updated     time.Time
+	Manifests   int
+	Scope       scoop.InstallScope
 }
 
 // UpdateResult is the result of updating a single bucket.
@@ -111,18 +112,15 @@ func (s *BucketService) getBucketInfo(name, bucketPath string, scope scoop.Insta
 			info.Updated = fi.ModTime()
 		}
 	}
-	info.Manifests = s.GetBucketManifestCount(bucketPath)
+	info.ManifestDir = FindBucketDir(bucketPath)
+	info.Manifests = s.GetBucketManifestCount(info.ManifestDir)
 	return info, nil
 }
 
 // GetBucketManifestCount counts .json manifest files in a bucket directory.
-// Prefers the bucket/ subdirectory (modern layout); falls back to the root.
-func (s *BucketService) GetBucketManifestCount(bucketPath string) int {
-	subdir := filepath.Join(bucketPath, "bucket")
-	if fi, err := os.Stat(subdir); err == nil && fi.IsDir() {
-		return countJSONFiles(subdir)
-	}
-	return countJSONFiles(bucketPath)
+// Finds in the passed manifest directory (prefers bucket/ subdir).
+func (s *BucketService) GetBucketManifestCount(manifestDir string) int {
+	return countJSONFiles(manifestDir)
 }
 
 // countJSONFiles counts files with a .json extension in a directory (non-recursive).
