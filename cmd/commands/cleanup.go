@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"go.noz.one/scg/internal/cmdctx"
@@ -86,19 +87,24 @@ func NewCleanupCommand() *cobra.Command {
 				fmt.Fprintln(os.Stdout, ui.Dim("(dry run — no files will be removed)"))
 			}
 
-			// Find max app name length for padding.
-			maxLen := 0
-			for _, t := range targets {
-				if len(t.Name) > maxLen {
-					maxLen = len(t.Name)
-				}
-			}
-
 			var results []service.CleanupResult
 			for _, t := range targets {
 				result := ctx.Services.Cleanup.CleanupApp(t.Name, scope, opts)
 				results = append(results, result)
-				displayCleanupResult(result, maxLen)
+			}
+
+			// Find max app name length only from apps that have something to clean.
+			maxLen := 0
+			for _, r := range results {
+				if len(r.OldVersions) > 0 || len(r.FailedVersions) > 0 || len(r.CacheFiles) > 0 {
+					if len(r.App) > maxLen {
+						maxLen = len(r.App)
+					}
+				}
+			}
+
+			for _, r := range results {
+				displayCleanupResult(r, maxLen)
 			}
 
 			displayCleanupSummary(results)
@@ -214,12 +220,12 @@ func formatSize(bytes int64) string {
 }
 
 func joinStrings(parts []string) string {
-	result := ""
+	var result strings.Builder
 	for i, p := range parts {
 		if i > 0 {
-			result += ", "
+			result.WriteString(", ")
 		}
-		result += p
+		result.WriteString(p)
 	}
-	return result
+	return result.String()
 }
