@@ -145,34 +145,24 @@ func Pull(repoPath string, opts PullOptions) error {
 	return err
 }
 
-// FetchAndMerge fetches from origin and fast-forward merges only if the remote
-// has new commits. Returns ("up-to-date", nil) if already current, ("updated", nil)
-// if new commits were merged, or ("", err) on failure.
-func FetchAndMerge(repoPath string) (status string, commits []string, err error) {
-	if _, err = run(repoPath, "fetch", "--quiet", "origin"); err != nil {
-		return "", nil, err
-	}
-
-	head, err := run(repoPath, "rev-parse", "HEAD")
+// FetchAndMerge fast-forward pulls from origin.
+// Returns "up-to-date" if already current, "updated" if new commits were merged.
+func FetchAndMerge(repoPath string) (status string, err error) {
+	before, err := run(repoPath, "rev-parse", "HEAD")
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
-
-	fetchHead, err := run(repoPath, "rev-parse", "FETCH_HEAD")
+	if _, err = run(repoPath, "pull", "--ff-only", "--quiet"); err != nil {
+		return "", err
+	}
+	after, err := run(repoPath, "rev-parse", "HEAD")
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
-
-	if head == fetchHead {
-		return "up-to-date", nil, nil
+	if before == after {
+		return "up-to-date", nil
 	}
-
-	// Fast-forward merge
-	if _, err = run(repoPath, "merge", "--ff-only", "--quiet", "FETCH_HEAD"); err != nil {
-		return "", nil, err
-	}
-
-	return "updated", nil, nil
+	return "updated", nil
 }
 
 // Fetch runs git fetch --quiet in the given repository directory.
@@ -183,14 +173,9 @@ func Fetch(repoPath string) error {
 
 // HasRemoteUpdates reports whether the local branch is behind its remote tracking branch.
 func HasRemoteUpdates(repoPath string) (bool, error) {
-	branch, err := GetCurrentBranch(repoPath)
+	out, err := run(repoPath, "rev-list", "--count", "HEAD..@{u}")
 	if err != nil {
-		return false, err
-	}
-	remote := "origin/" + branch
-	out, err := run(repoPath, "rev-list", "--count", "HEAD.."+remote)
-	if err != nil {
-		// Try HEAD..origin/HEAD as fallback
+		// Fall back when no upstream tracking branch is configured.
 		out, err = run(repoPath, "rev-list", "--count", "HEAD..origin/HEAD")
 		if err != nil {
 			return false, err
@@ -238,6 +223,40 @@ func GetCommitsSince(hash, repoPath string) ([]string, error) {
 // GetCommitHash returns the full commit hash for the given ref in repoPath.
 func GetCommitHash(ref, repoPath string) (string, error) {
 	return run(repoPath, "rev-parse", ref)
+}
+
+// ReadHEAD returns the current HEAD commit hash by reading git object files directly.
+// Falls back to rev-parse if direct reading fails.
+func ReadHEAD(repoPath string) (string, error) {
+	headFile := filepath.Join(repoPath, ".git", "HEAD")
+	data, err := os.ReadFile(headFile)
+	if err != nil {
+		return GetCommitHash("HEAD", repoPath)
+	}
+	content := strings.TrimSpace(string(data))
+	if strings.HasPrefix(content, "ref: ") {
+		ref := strings.TrimPrefix(content, "ref: ")
+		refFile := filepath.Join(repoPath, ".git", filepath.FromSlash(ref))
+		if hashBytes, err := os.ReadFile(refFile); err == nil {
+			return strings.TrimSpace(string(hashBytes)), nil
+		}
+		packedRefs := filepath.Join(repoPath, ".git", "packed-refs")
+		if prData, err := os.ReadFile(packedRefs); err == nil {
+			for _, line := range strings.Split(string(prData), "\n") {
+				if strings.HasPrefix(line, "#") || strings.HasPrefix(line, "^") {
+					continue
+				}
+				if strings.HasSuffix(line, " "+ref) || strings.HasSuffix(line, "\t"+ref) {
+					parts := strings.Fields(line)
+					if len(parts) >= 2 {
+						return parts[0], nil
+					}
+				}
+			}
+		}
+		return GetCommitHash("HEAD", repoPath)
+	}
+	return content, nil
 }
 
 // GetCurrentBranch returns the name of the currently checked-out branch.

@@ -204,13 +204,13 @@ func (s *BucketService) updateOne(name string, scope scoop.InstallScope, showCha
 	var hashBefore string
 	if showChangelog {
 		var err error
-		hashBefore, err = git.GetCommitHash("HEAD", bucketPath)
+		hashBefore, err = git.ReadHEAD(bucketPath)
 		if err != nil {
 			return UpdateResult{Name: name, Status: "failed", Error: err}
 		}
 	}
 
-	status, _, err := git.FetchAndMerge(bucketPath)
+	status, err := git.FetchAndMerge(bucketPath)
 	if err != nil {
 		return UpdateResult{Name: name, Status: "failed", Error: err}
 	}
