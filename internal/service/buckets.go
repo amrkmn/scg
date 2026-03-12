@@ -1,8 +1,11 @@
 package service
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"go.noz.one/scg/internal/git"
@@ -160,40 +163,50 @@ func (s *BucketService) Remove(name string, scope scoop.InstallScope) error {
 }
 
 // UpdateBuckets updates the named buckets concurrently (one goroutine per bucket).
+// It respects context cancellation and returns results in the same order as names.
 // onStart is called when a bucket begins updating, onComplete when it finishes.
+// onComplete is guaranteed to be called exactly once per bucket.
 func (s *BucketService) UpdateBuckets(
+	ctx context.Context,
 	names []string,
 	scope scoop.InstallScope,
 	showChangelog bool,
 	onStart func(name string),
 	onComplete func(result UpdateResult),
 ) []UpdateResult {
-	ch := make(chan UpdateResult, len(names))
+	results := make([]UpdateResult, len(names))
 
-	for _, name := range names {
-		go func(n string) {
+	var wg sync.WaitGroup
+	for i, name := range names {
+		wg.Add(1)
+		go func(i int, n string) {
+			defer wg.Done()
+
 			if onStart != nil {
 				onStart(n)
 			}
-			result := s.updateOne(n, scope, showChangelog)
+
+			result := s.updateOne(ctx, n, scope, showChangelog)
+			results[i] = result
+
 			if onComplete != nil {
 				onComplete(result)
 			}
-			ch <- result
-		}(name)
+		}(i, name)
 	}
 
-	results := make([]UpdateResult, 0, len(names))
-	for range names {
-		results = append(results, <-ch)
-	}
+	wg.Wait()
 	return results
 }
 
 // updateOne performs a fetch+merge on a single bucket and returns the result.
 // It returns "up-to-date" immediately if the remote has no new commits,
-// skipping the merge entirely.
-func (s *BucketService) updateOne(name string, scope scoop.InstallScope, showChangelog bool) UpdateResult {
+// skipping the merge entirely. It respects context cancellation.
+func (s *BucketService) updateOne(ctx context.Context, name string, scope scoop.InstallScope, showChangelog bool) UpdateResult {
+	if ctx.Err() != nil {
+		return UpdateResult{Name: name, Status: "failed", Error: fmt.Errorf("update cancelled: %w", ctx.Err())}
+	}
+
 	paths := scoop.ResolvePaths(scope)
 	bucketPath := filepath.Join(paths.Buckets, name)
 
@@ -206,18 +219,25 @@ func (s *BucketService) updateOne(name string, scope scoop.InstallScope, showCha
 		var err error
 		hashBefore, err = git.ReadHEAD(bucketPath)
 		if err != nil {
-			return UpdateResult{Name: name, Status: "failed", Error: err}
+			return UpdateResult{Name: name, Status: "failed", Error: fmt.Errorf("read HEAD: %w", err)}
 		}
+	}
+
+	if ctx.Err() != nil {
+		return UpdateResult{Name: name, Status: "failed", Error: fmt.Errorf("update cancelled: %w", ctx.Err())}
 	}
 
 	status, err := git.FetchAndMerge(bucketPath)
 	if err != nil {
-		return UpdateResult{Name: name, Status: "failed", Error: err}
+		return UpdateResult{Name: name, Status: "failed", Error: fmt.Errorf("fetch and merge: %w", err)}
 	}
 
 	result := UpdateResult{Name: name, Status: status}
 	if showChangelog && status == "updated" && hashBefore != "" {
-		commits, _ := git.GetCommitsSince(hashBefore, bucketPath)
+		commits, err := git.GetCommitsSince(hashBefore, bucketPath)
+		if err != nil {
+			return UpdateResult{Name: name, Status: "failed", Error: fmt.Errorf("get commits: %w", err)}
+		}
 		result.Commits = commits
 	}
 	return result
