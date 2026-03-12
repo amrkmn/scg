@@ -16,10 +16,9 @@ import (
 
 // updateState tracks per-bucket display state for the animated UI
 type updateState struct {
-	name      string
-	status    string // "updating" | "updated" | "up-to-date" | "failed"
-	err       error
-	changelog []string // commit lines to display after the status line
+	name   string
+	status string // "updating" | "updated" | "up-to-date" | "failed"
+	err    error
 }
 
 func NewUpdateCommand() *cobra.Command {
@@ -110,20 +109,11 @@ func NewUpdateCommand() *cobra.Command {
 				if i, ok := nameIndex[result.Name]; ok {
 					states[i].status = result.Status
 					states[i].err = result.Error
-					// Store changelog lines in state so reprintStates can account for them
-					if changelog && result.Status == "updated" && len(result.Commits) > 0 {
-						lines := make([]string, 0, len(result.Commits)+1)
-						lines = append(lines, fmt.Sprintf("  %s changelog:", ui.Bold(result.Name)))
-						for _, commit := range result.Commits {
-							lines = append(lines, fmt.Sprintf("    %s", commit))
-						}
-						states[i].changelog = lines
-					}
 				}
 				reprintStates(states, frame)
 			}
 
-			results := ctx.Services.Buckets.UpdateBuckets(names, scope, changelog, onStart, onComplete)
+			results := ctx.Services.Buckets.UpdateBuckets(cmd.Context(), names, scope, changelog, onStart, onComplete)
 
 			// Stop the animation ticker and wait for the goroutine to exit
 			ticker.Stop()
@@ -162,6 +152,19 @@ func NewUpdateCommand() *cobra.Command {
 			}
 			fmt.Println(strings.Join(parts, "  "))
 
+			// Print changelogs for updated buckets at the bottom
+			if changelog && updated > 0 {
+				fmt.Println()
+				for _, r := range results {
+					if r.Status == "updated" && len(r.Commits) > 0 {
+						fmt.Printf("  %s's changelog:\n", ui.Bold(r.Name))
+						for _, commit := range r.Commits {
+							fmt.Printf("    %s\n", commit)
+						}
+					}
+				}
+			}
+
 			if failed > 0 {
 				os.Exit(1)
 			}
@@ -171,38 +174,22 @@ func NewUpdateCommand() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVarP(&global, "global", "g", false, "Update buckets in global Scoop installation")
-	cmd.Flags().BoolVar(&changelog, "changelog", false, "Show new commits after update")
+	cmd.Flags().BoolVarP(&changelog, "changelog", "c", false, "Show new commits after update")
 	return cmd
-}
-
-// totalLines returns the total number of lines occupied by all states (status + changelog)
-func totalLines(states []updateState) int {
-	n := len(states)
-	for _, s := range states {
-		n += len(s.changelog)
-	}
-	return n
 }
 
 // printStates prints all bucket states for the first time
 func printStates(states []updateState, frame int) {
 	for _, s := range states {
 		fmt.Println(formatBucketLine(s, frame))
-		for _, line := range s.changelog {
-			fmt.Println(line)
-		}
 	}
 }
 
 // reprintStates moves cursor up to the top of the state block and reprints everything
 func reprintStates(states []updateState, frame int) {
-	n := totalLines(states)
-	fmt.Printf("\x1b[%dA", n)
+	fmt.Printf("\x1b[%dA", len(states))
 	for _, s := range states {
 		fmt.Printf("\r\x1b[2K%s\n", formatBucketLine(s, frame))
-		for _, line := range s.changelog {
-			fmt.Printf("\r\x1b[2K%s\n", line)
-		}
 	}
 }
 
