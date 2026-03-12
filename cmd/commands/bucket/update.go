@@ -3,6 +3,7 @@ package bucket
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -48,6 +49,7 @@ func NewUpdateCommand() *cobra.Command {
 				for _, b := range allBuckets {
 					names = append(names, b.Name)
 				}
+				sort.Strings(names)
 			}
 
 			if len(names) == 0 {
@@ -155,9 +157,14 @@ func NewUpdateCommand() *cobra.Command {
 			// Print changelogs for updated buckets at the bottom
 			if changelog && updated > 0 {
 				fmt.Println()
-				for _, r := range results {
+				sortedResults := make([]service.UpdateResult, len(results))
+				copy(sortedResults, results)
+				sort.Slice(sortedResults, func(i, j int) bool {
+					return sortedResults[i].Name < sortedResults[j].Name
+				})
+				for _, r := range sortedResults {
 					if r.Status == "updated" && len(r.Commits) > 0 {
-						fmt.Printf("  %s's changelog:\n", ui.Bold(r.Name))
+						fmt.Printf("  %s:\n", ui.Cyan(ui.Bold(r.Name)))
 						for _, commit := range r.Commits {
 							fmt.Printf("    %s\n", commit)
 						}
