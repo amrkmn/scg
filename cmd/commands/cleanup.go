@@ -142,7 +142,7 @@ func displayCleanupResult(r service.CleanupResult, maxNameLen int) {
 
 	detail := ""
 	if len(versionNames) > 0 {
-		detail = fmt.Sprintf("%s (%s)", joinStrings(versionNames), formatSize(totalSize))
+		detail = fmt.Sprintf("%s (%s)", joinStrings(versionNames), ui.Dim(formatSize(totalSize)))
 	}
 	cacheDetail := ""
 	if len(r.CacheFiles) > 0 {
