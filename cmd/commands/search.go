@@ -67,11 +67,11 @@ func NewSearchCommand() *cobra.Command {
 				for _, r := range items {
 					installedTag := ""
 					if r.IsInstalled {
-						installedTag = " " + ui.DimGreen("[installed]")
+						installedTag = " " + ui.Green("[installed]")
 					}
 					line := fmt.Sprintf("  %s %s%s",
 						ui.BoldCyan(r.Name),
-						ui.DimGreen("("+r.Version+")"),
+						ui.Dim("("+r.Version+")"),
 						installedTag,
 					)
 					fmt.Fprintln(os.Stdout, line)
