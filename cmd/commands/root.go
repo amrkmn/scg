@@ -41,6 +41,7 @@ It wraps the Scoop package manager with parallel operations and a clean interfac
 		NewListCommand(),
 		NewSearchCommand(),
 		NewInfoCommand(),
+		NewCatCommand(),
 		NewCleanupCommand(),
 		NewStatusCommand(),
 		bucket.NewBucketCommand(),
