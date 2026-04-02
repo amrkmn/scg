@@ -86,6 +86,5 @@ jobs:
             **Commit:** ${{ github.sha }}
             
             ⚠️ This is a development build and may be unstable.
-          force_update_tag: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
