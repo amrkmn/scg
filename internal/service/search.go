@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"go.noz.one/scg/internal/scoop"
+	"go.noz.one/scg/internal/utils"
 )
 
 // SearchResult holds a single search result from a bucket scan.
@@ -253,33 +254,5 @@ func matchQuery(name, query, lowerQuery string, caseSensitive bool) bool {
 	if len(lowerQuery) == 0 {
 		return true
 	}
-	return containsIgnoreCase(name, lowerQuery)
-}
-
-// containsIgnoreCase checks if s contains substr (which MUST be already lowercase)
-// without allocating strings for intermediate lowercasing.
-func containsIgnoreCase(s, lowerSubstr string) bool {
-	if len(lowerSubstr) == 0 {
-		return true
-	}
-	if len(lowerSubstr) > len(s) {
-		return false
-	}
-	for i := 0; i <= len(s)-len(lowerSubstr); i++ {
-		match := true
-		for j := 0; j < len(lowerSubstr); j++ {
-			c := s[i+j]
-			if c >= 'A' && c <= 'Z' {
-				c += 'a' - 'A'
-			}
-			if c != lowerSubstr[j] {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
-	}
-	return false
+	return utils.ContainsFoldFast(name, lowerQuery)
 }
