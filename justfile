@@ -60,3 +60,95 @@ all: clean install build
 # Run hyperfine benchmark
 benchmark-search query="git":
     hyperfine --warmup 2 "dist/scg.exe search {{query}}" "sfsu search {{query}}"
+
+# ===========================================
+# Release helpers
+# ===========================================
+
+# List all tags
+tags:
+    git tag -l --sort=-v:refname
+
+# Show current version
+current-version:
+    @echo "Current version: {{VERSION}}"
+
+# Create and push a release tag (usage: just release v1.0.0)
+release version:
+    #!/usr/bin/env bash
+    set -e
+    
+    VERSION="{{version}}"
+    
+    # Ensure version starts with 'v'
+    if [[ ! "$VERSION" =~ ^v ]]; then
+        VERSION="v$VERSION"
+    fi
+    
+    echo "Creating release $VERSION..."
+    
+    # Check for uncommitted changes
+    if ! git diff --quiet; then
+        echo "Error: You have uncommitted changes. Commit or stash them first."
+        exit 1
+    fi
+    
+    # Run tests
+    just test
+    
+    # Create tag
+    git tag -a "$VERSION" -m "Release $VERSION"
+    
+    # Push tag
+    echo "Pushing tag $VERSION..."
+    git push origin "$VERSION"
+    
+    echo "✓ Release $VERSION created and pushed!"
+    echo "Check CI at: https://github.com/amrkmn/scg/actions"
+
+# Create a draft release (usage: just draft-release v1.0.0 "Release notes here")
+draft-release version body="Release notes":
+    #!/usr/bin/env bash
+    set -e
+    
+    VERSION="{{version}}"
+    if [[ ! "$VERSION" =~ ^v ]]; then
+        VERSION="v$VERSION"
+    fi
+    
+    # Check if gh is installed
+    if ! command -v gh &> /dev/null; then
+        echo "Error: GitHub CLI (gh) is required for this command."
+        echo "Install from: https://cli.github.com"
+        exit 1
+    fi
+    
+    gh release create "$VERSION" --draft --title "Release $VERSION" --notes "{{body}}"
+
+# Delete a local and remote tag (usage: just delete-tag v1.0.0)
+delete-tag version:
+    #!/usr/bin/env bash
+    set -e
+    
+    VERSION="{{version}}"
+    if [[ ! "$VERSION" =~ ^v ]]; then
+        VERSION="v$VERSION"
+    fi
+    
+    git tag -d "$VERSION"
+    git push origin --delete "$VERSION"
+    echo "✓ Deleted tag $VERSION"
+
+# Show release instructions
+help-release:
+    @echo "Release Workflow:"
+    @echo ""
+    @echo "  just release v1.0.0           Create and push release tag"
+    @echo "  just draft-release v1.0.0     Create draft release (requires gh CLI)"
+    @echo "  just delete-tag v1.0.0        Delete a tag"
+    @echo "  just tags                      List all tags"
+    @echo ""
+    @echo "Manual steps:"
+    @echo "  1. just release v1.0.0        Creates and pushes tag"
+    @echo "  2. Wait for CI to complete     https://github.com/amrkmn/scg/actions"
+    @echo "  3. Download binary             https://github.com/amrkmn/scg/releases"
