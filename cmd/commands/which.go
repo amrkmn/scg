@@ -16,10 +16,7 @@ func NewWhichCommand() *cobra.Command {
 		Args:    cobra.ExactArgs(1),
 		Example: "scg which git\nscg which python",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmdctx.FromCmd(cmd)
-			if ctx == nil {
-				return fmt.Errorf("context unavailable")
-			}
+			ctx := cmdctx.MustFromCmd(cmd)
 			paths, err := ctx.Services.Shims.FindExecutable(args[0])
 			if err != nil || len(paths) == 0 {
 				fmt.Fprintf(os.Stderr, "Command '%s' not found\n", args[0])

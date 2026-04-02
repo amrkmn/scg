@@ -20,10 +20,7 @@ func NewInfoCommand() *cobra.Command {
 		Args:    cobra.ExactArgs(1),
 		Example: "scg info git\nscg info extras/git",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmdctx.FromCmd(cmd)
-			if ctx == nil {
-				return fmt.Errorf("context unavailable")
-			}
+			ctx := cmdctx.MustFromCmd(cmd)
 
 			all := ctx.Services.Manifests.FindAllManifests(args[0])
 			if len(all) == 0 {

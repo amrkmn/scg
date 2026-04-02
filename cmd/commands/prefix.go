@@ -19,10 +19,7 @@ func NewPrefixCommand() *cobra.Command {
 		Args:    cobra.ExactArgs(1),
 		Example: "scg prefix git\nscg prefix -g git",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmdctx.FromCmd(cmd)
-			if ctx == nil {
-				return fmt.Errorf("context unavailable")
-			}
+			ctx := cmdctx.MustFromCmd(cmd)
 			scope := scoop.ScopeUser
 			if flagGlobal {
 				scope = scoop.ScopeGlobal

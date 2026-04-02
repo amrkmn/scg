@@ -20,10 +20,7 @@ func NewCatCommand() *cobra.Command {
 		Example: `scg cat git
 scg cat extras/enso`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmdctx.FromCmd(cmd)
-			if ctx == nil {
-				return fmt.Errorf("context unavailable")
-			}
+			ctx := cmdctx.MustFromCmd(cmd)
 
 			input := args[0]
 

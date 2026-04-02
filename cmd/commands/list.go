@@ -21,10 +21,7 @@ func NewListCommand() *cobra.Command {
 		Args:    cobra.MaximumNArgs(1),
 		Example: "scg list\nscg list git\nscg list --json",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmdctx.FromCmd(cmd)
-			if ctx == nil {
-				return fmt.Errorf("context unavailable")
-			}
+			ctx := cmdctx.MustFromCmd(cmd)
 
 			filter := ""
 			if len(args) > 0 {

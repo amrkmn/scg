@@ -22,10 +22,7 @@ func NewSearchCommand() *cobra.Command {
 		Args:    cobra.ExactArgs(1),
 		Example: "scg search git\nscg search -b main python\nscg search --installed git",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmdctx.FromCmd(cmd)
-			if ctx == nil {
-				return fmt.Errorf("context unavailable")
-			}
+			ctx := cmdctx.MustFromCmd(cmd)
 			query := args[0]
 
 			results := ctx.Services.Search.SearchBuckets(query, service.SearchOptions{

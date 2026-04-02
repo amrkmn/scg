@@ -27,10 +27,7 @@ func NewCleanupCommand() *cobra.Command {
 		Args:    cobra.MaximumNArgs(1),
 		Example: "scg cleanup git\nscg cleanup --all --cache\nscg cleanup --all --dry-run",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmdctx.FromCmd(cmd)
-			if ctx == nil {
-				return fmt.Errorf("context unavailable")
-			}
+			ctx := cmdctx.MustFromCmd(cmd)
 
 			opts := service.CleanupOptions{
 				Cache:   flagCache,

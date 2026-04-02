@@ -17,10 +17,7 @@ func NewListCommand() *cobra.Command {
 		Short: "List installed buckets",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmdctx.FromCmd(cmd)
-			if ctx == nil {
-				return fmt.Errorf("context unavailable")
-			}
+			ctx := cmdctx.MustFromCmd(cmd)
 
 			buckets, err := ctx.Services.Buckets.List("")
 			if err != nil {

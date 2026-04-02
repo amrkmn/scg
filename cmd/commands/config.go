@@ -25,10 +25,7 @@ func NewConfigCommand() *cobra.Command {
 		Args:    cobra.RangeArgs(0, 2),
 		Example: "scg config\nscg config proxy http://proxy:8080\nscg config rm proxy",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmdctx.FromCmd(cmd)
-			if ctx == nil {
-				return fmt.Errorf("context unavailable")
-			}
+			ctx := cmdctx.MustFromCmd(cmd)
 			svc := ctx.Services.Config
 
 			switch len(args) {
