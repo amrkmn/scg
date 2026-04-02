@@ -75,71 +75,24 @@ tags:
 current-version:
     @echo "Current version: {{VERSION}}"
 
-# ci(release): create and push a release tag
+# ci(release): create and push a release tag (usage: just release v1.0.0)
 release version:
-    #!/usr/bin/env bash
-    set -e
-    
-    VERSION="{{version}}"
-    
-    # Ensure version starts with 'v'
-    if [[ ! "$VERSION" =~ ^v ]]; then
-        VERSION="v$VERSION"
-    fi
-    
-    echo "Creating release $VERSION..."
-    
-    # Check for uncommitted changes
-    if ! git diff --quiet; then
-        echo "Error: You have uncommitted changes. Commit or stash them first."
-        exit 1
-    fi
-    
-    # Run tests
+    @echo "Creating release {{version}}..."
     just test
-    
-    # Create tag
-    git tag -a "$VERSION" -m "chore: release $VERSION"
-    
-    # Push tag
-    echo "Pushing tag $VERSION..."
-    git push origin "$VERSION"
-    
-    echo "✓ Release $VERSION created and pushed!"
-    echo "Check CI at: https://github.com/amrkmn/scg/actions"
+    git tag -a "{{version}}" -m "chore: release {{version}}"
+    git push origin "{{version}}"
+    @echo "✓ Release {{version}} created!"
+    @echo "Check CI at: https://github.com/amrkmn/scg/actions"
 
 # ci(release): create a draft release on GitHub
 draft-release version body="Release notes":
-    #!/usr/bin/env bash
-    set -e
-    
-    VERSION="{{version}}"
-    if [[ ! "$VERSION" =~ ^v ]]; then
-        VERSION="v$VERSION"
-    fi
-    
-    # Check if gh is installed
-    if ! command -v gh &> /dev/null; then
-        echo "Error: GitHub CLI (gh) is required for this command."
-        echo "Install from: https://cli.github.com"
-        exit 1
-    fi
-    
-    gh release create "$VERSION" --draft --title "Release $VERSION" --notes "{{body}}"
+    gh release create "{{version}}" --draft --title "Release {{version}}" --notes "{{body}}"
 
 # ci(release): delete a local and remote tag
 delete-tag version:
-    #!/usr/bin/env bash
-    set -e
-    
-    VERSION="{{version}}"
-    if [[ ! "$VERSION" =~ ^v ]]; then
-        VERSION="v$VERSION"
-    fi
-    
-    git tag -d "$VERSION"
-    git push origin --delete "$VERSION"
-    echo "✓ Deleted tag $VERSION"
+    git tag -d "{{version}}"
+    git push origin --delete "{{version}}"
+    @echo "✓ Deleted tag {{version}}"
 
 # docs: show release workflow help
 help-release:
@@ -150,7 +103,4 @@ help-release:
     @echo "  just delete-tag v1.0.0        Delete a tag"
     @echo "  just tags                     List all tags"
     @echo ""
-    @echo "Manual steps:"
-    @echo "  1. just release v1.0.0        Creates and pushes tag"
-    @echo "  2. Wait for CI to complete    https://github.com/amrkmn/scg/actions"
-    @echo "  3. Download binary            https://github.com/amrkmn/scg/releases"
+    @echo "Note: Version must include 'v' prefix (e.g., v1.0.0)"
