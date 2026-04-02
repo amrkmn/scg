@@ -1,79 +1,81 @@
-# Get version from env or use default
+# feat: current version (defaults to 0.1.0)
 VERSION := env_var_or_default("VERSION", "0.1.0")
 
-# Build scg binary (64-bit Windows)
+# build: compile scg binary for Windows x64
 build:
     go build -ldflags "-X main.Version={{VERSION}} -s -w" -o dist/scg.exe ./cmd
 
-# Build for different architectures
+# build: compile scg binary for Windows x64 (explicit)
 build-win64:
     GOOS=windows GOARCH=amd64 go build -ldflags "-X main.Version={{VERSION}} -s -w" -o dist/scg-{{VERSION}}-windows-amd64.exe ./cmd
 
+# build: compile scg binary for Windows x86
 build-win32:
     GOOS=windows GOARCH=386 go build -ldflags "-X main.Version={{VERSION}} -s -w" -o dist/scg-{{VERSION}}-windows-386.exe ./cmd
 
+# build: compile scg binary for Windows ARM64
 build-arm64:
     GOOS=windows GOARCH=arm64 go build -ldflags "-X main.Version={{VERSION}} -s -w" -o dist/scg-{{VERSION}}-windows-arm64.exe ./cmd
 
-# Build all architectures
+# build: compile scg binaries for all architectures
 build-all:
     just build-win64
     just build-win32
     just build-arm64
 
-# Build with debug symbols
+# build: compile scg binary with debug symbols
 build-debug:
     go build -o dist/scg.exe ./cmd
 
-# Run scg
+# run: execute scg with arguments
 run *args:
     go run ./cmd {{args}}
 
-# Install dependencies
+# build: install dependencies
 install:
     go mod download
     go mod tidy
 
-# Run tests
+# test: run all tests
 test:
     go test ./...
 
-# Run benchmarks
+# test: run benchmarks
 bench:
     go test -bench=. -benchmem ./...
 
-# Clean build artifacts
+# build: remove build artifacts
 clean:
     rm -rf dist/
 
-# Lint code
+# style: lint code
 lint:
     go vet ./...
 
-# Format code
+# style: format code
 fmt:
     go fmt ./...
 
-# Full build: clean, install, build
+# build: clean install and build
 all: clean install build
 
-# Run hyperfine benchmark
+# perf: benchmark search command
 benchmark-search query="git":
     hyperfine --warmup 2 "dist/scg.exe search {{query}}" "sfsu search {{query}}"
 
 # ===========================================
-# Release helpers
+# ci: release helpers
 # ===========================================
 
-# List all tags
+# ci: list all release tags
 tags:
     git tag -l --sort=-v:refname
 
-# Show current version
+# docs: show current version
 current-version:
     @echo "Current version: {{VERSION}}"
 
-# Create and push a release tag (usage: just release v1.0.0)
+# ci(release): create and push a release tag
 release version:
     #!/usr/bin/env bash
     set -e
@@ -106,7 +108,7 @@ release version:
     echo "✓ Release $VERSION created and pushed!"
     echo "Check CI at: https://github.com/amrkmn/scg/actions"
 
-# Create a draft release (usage: just draft-release v1.0.0 "Release notes here")
+# ci(release): create a draft release on GitHub
 draft-release version body="Release notes":
     #!/usr/bin/env bash
     set -e
@@ -125,7 +127,7 @@ draft-release version body="Release notes":
     
     gh release create "$VERSION" --draft --title "Release $VERSION" --notes "{{body}}"
 
-# Delete a local and remote tag (usage: just delete-tag v1.0.0)
+# ci(release): delete a local and remote tag
 delete-tag version:
     #!/usr/bin/env bash
     set -e
@@ -139,16 +141,16 @@ delete-tag version:
     git push origin --delete "$VERSION"
     echo "✓ Deleted tag $VERSION"
 
-# Show release instructions
+# docs: show release workflow help
 help-release:
     @echo "Release Workflow:"
     @echo ""
     @echo "  just release v1.0.0           Create and push release tag"
     @echo "  just draft-release v1.0.0     Create draft release (requires gh CLI)"
     @echo "  just delete-tag v1.0.0        Delete a tag"
-    @echo "  just tags                      List all tags"
+    @echo "  just tags                     List all tags"
     @echo ""
     @echo "Manual steps:"
     @echo "  1. just release v1.0.0        Creates and pushes tag"
-    @echo "  2. Wait for CI to complete     https://github.com/amrkmn/scg/actions"
-    @echo "  3. Download binary             https://github.com/amrkmn/scg/releases"
+    @echo "  2. Wait for CI to complete    https://github.com/amrkmn/scg/actions"
+    @echo "  3. Download binary            https://github.com/amrkmn/scg/releases"
