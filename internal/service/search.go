@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 
@@ -242,6 +243,7 @@ func ExtractBinaries(bin any) []string {
 		for alias := range v {
 			out = append(out, alias)
 		}
+		sort.Strings(out)
 		return out
 	}
 	return nil
