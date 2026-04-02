@@ -50,11 +50,18 @@ clean:
 
 # style: lint code
 lint:
-    go vet ./...
+    golangci-lint run --timeout=5m
 
 # style: format code
 fmt:
     go fmt ./...
+
+# ci: run all checks (format, lint, test) before committing
+check:
+    just fmt
+    just lint
+    just test
+    @echo All checks passed!
 
 # build: clean install and build
 all: clean install build

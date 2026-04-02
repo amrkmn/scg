@@ -9,7 +9,7 @@ func TestCoerceValue(t *testing.T) {
 	}{
 		{"true", true},
 		{"false", false},
-		{"TRUE", true},   // case insensitive
+		{"TRUE", true}, // case insensitive
 		{"FALSE", false},
 		{"null", nil},
 		{"undefined", nil},

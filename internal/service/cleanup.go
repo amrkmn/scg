@@ -118,7 +118,7 @@ func (s *CleanupService) CleanupApp(appName string, scope scoop.InstallScope, op
 				if prefixLen < len(nameLower) {
 					nextChar := nameLower[prefixLen]
 					// If next char is a letter, this is a different app (e.g., git-lfs)
-					if (nextChar >= 'a' && nextChar <= 'z') {
+					if nextChar >= 'a' && nextChar <= 'z' {
 						continue
 					}
 				}

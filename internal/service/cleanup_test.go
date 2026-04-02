@@ -14,7 +14,7 @@ func TestCacheFileMatching(t *testing.T) {
 
 	// Create test cache files
 	testFiles := []struct {
-		name    string
+		name           string
 		shouldMatchGit bool
 	}{
 		// Should match git
@@ -70,8 +70,8 @@ func TestGetDirectorySize(t *testing.T) {
 
 	// Create files with known sizes
 	files := map[string]int64{
-		"file1.txt": 100,
-		"file2.txt": 200,
+		"file1.txt":        100,
+		"file2.txt":        200,
 		"subdir/file3.txt": 50,
 	}
 

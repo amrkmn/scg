@@ -35,14 +35,14 @@ func TestCompareVersionArrays(t *testing.T) {
 		a, b [4]int
 		want int
 	}{
-		{[4]int{1, 0, 0, 0}, [4]int{1, 0, 0, 0}, 0},   // equal
-		{[4]int{1, 0, 0, 0}, [4]int{2, 0, 0, 0}, -1},  // a < b
-		{[4]int{2, 0, 0, 0}, [4]int{1, 0, 0, 0}, 1},   // a > b
-		{[4]int{1, 2, 0, 0}, [4]int{1, 3, 0, 0}, -1},  // minor version
-		{[4]int{1, 2, 3, 0}, [4]int{1, 2, 4, 0}, -1},  // patch version
-		{[4]int{1, 2, 3, 4}, [4]int{1, 2, 3, 5}, -1},  // build number
-		{[4]int{10, 0, 0, 0}, [4]int{9, 9, 9, 9}, 1},  // major wins
-		{[4]int{0, 0, 0, 0}, [4]int{0, 0, 0, 0}, 0},   // zeros
+		{[4]int{1, 0, 0, 0}, [4]int{1, 0, 0, 0}, 0},  // equal
+		{[4]int{1, 0, 0, 0}, [4]int{2, 0, 0, 0}, -1}, // a < b
+		{[4]int{2, 0, 0, 0}, [4]int{1, 0, 0, 0}, 1},  // a > b
+		{[4]int{1, 2, 0, 0}, [4]int{1, 3, 0, 0}, -1}, // minor version
+		{[4]int{1, 2, 3, 0}, [4]int{1, 2, 4, 0}, -1}, // patch version
+		{[4]int{1, 2, 3, 4}, [4]int{1, 2, 3, 5}, -1}, // build number
+		{[4]int{10, 0, 0, 0}, [4]int{9, 9, 9, 9}, 1}, // major wins
+		{[4]int{0, 0, 0, 0}, [4]int{0, 0, 0, 0}, 0},  // zeros
 	}
 
 	for _, tt := range tests {
@@ -62,9 +62,9 @@ func TestLeadingInt(t *testing.T) {
 		{"456abc", 456},
 		{"0", 0},
 		{"999", 999},
-		{"abc", 0},  // No leading digits
+		{"abc", 0}, // No leading digits
 		{"", 0},
-		{"1.2", 1},  // Stops at non-digit
+		{"1.2", 1}, // Stops at non-digit
 	}
 
 	for _, tt := range tests {
@@ -85,7 +85,7 @@ func TestToStringSlice(t *testing.T) {
 		{"", nil}, // Empty string returns nil
 		{[]any{"a", "b", "c"}, []string{"a", "b", "c"}},
 		{[]string{"x", "y"}, []string{"x", "y"}},
-		{123, nil}, // Non-string types return nil
+		{123, nil},                             // Non-string types return nil
 		{[]any{123, "test"}, []string{"test"}}, // Non-strings in array are skipped
 	}
 
