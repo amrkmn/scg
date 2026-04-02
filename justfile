@@ -99,7 +99,7 @@ release version:
     just test
     
     # Create tag
-    git tag -a "$VERSION" -m "Release $VERSION"
+    git tag -a "$VERSION" -m "chore: release $VERSION"
     
     # Push tag
     echo "Pushing tag $VERSION..."
