@@ -1,5 +1,5 @@
 # feat: current version (defaults to 0.1.0)
-VERSION := env_var_or_default("VERSION", "0.1.0")
+VERSION := env("VERSION", "0.1.0")
 
 # build: compile scg binary for Windows x64
 build:
