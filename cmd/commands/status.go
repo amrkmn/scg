@@ -20,12 +20,9 @@ func NewStatusCommand() *cobra.Command {
 		Use:     "status",
 		Short:   "Show update status for installed apps",
 		Args:    cobra.NoArgs,
-		Example: "scg status\nscg status --local",
+		Example: "scg status\nscg status --local\nscg status --verbose",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmdctx.FromCmd(cmd)
-			if ctx == nil {
-				return fmt.Errorf("context unavailable")
-			}
+			ctx := cmdctx.MustFromCmd(cmd)
 
 			apps, err := ctx.Services.Apps.ListInstalled("")
 			if err != nil {
@@ -62,20 +59,25 @@ func NewStatusCommand() *cobra.Command {
 
 			appResults := ctx.Services.Status.CheckStatus(checkApps, buckets, nil)
 
-			var filtered []service.AppStatusResult
-			for _, r := range appResults {
-				if r.Outdated || r.Failed || len(r.MissingDeps) > 0 {
-					filtered = append(filtered, r)
+			// In verbose mode, show all apps; otherwise filter to those needing attention.
+			var display []service.AppStatusResult
+			if flagVerbose {
+				display = appResults
+			} else {
+				for _, r := range appResults {
+					if r.Outdated || r.Failed || len(r.MissingDeps) > 0 {
+						display = append(display, r)
+					}
 				}
 			}
 
-			if len(filtered) == 0 {
+			if len(display) == 0 {
 				fmt.Fprintf(os.Stdout, "%s All installed apps are up to date.\n", ui.Success("✓"))
 				return nil
 			}
 
-			sort.Slice(filtered, func(i, j int) bool {
-				return filtered[i].Name < filtered[j].Name
+			sort.Slice(display, func(i, j int) bool {
+				return display[i].Name < display[j].Name
 			})
 
 			header := []string{
@@ -87,23 +89,24 @@ func NewStatusCommand() *cobra.Command {
 			}
 			rows := [][]string{header}
 
-			for _, r := range filtered {
+			for _, r := range display {
 				name := ui.Cyan(r.Name)
 
 				latest := r.Latest
 				if r.Outdated {
-					latest = "* " + r.Latest
+					latest = ui.Yellow("* " + r.Latest)
 				}
 
 				info := ""
 				if r.Failed {
 					info = ui.Red("Failed")
+				} else if r.Held {
+					info = ui.Yellow("Held")
 				}
-				if r.Held {
-					if info != "" {
-						info += " "
-					}
-					info += ui.Yellow("Held")
+
+				// In verbose mode, show status for up-to-date apps
+				if flagVerbose && !r.Outdated && !r.Failed && len(r.MissingDeps) == 0 && !r.Held {
+					info = ui.Dim("up-to-date")
 				}
 
 				missingDeps := strings.Join(r.MissingDeps, ", ")
@@ -111,9 +114,23 @@ func NewStatusCommand() *cobra.Command {
 				rows = append(rows, []string{name, r.Installed, latest, missingDeps, info})
 			}
 
-			_ = flagVerbose
 			fmt.Fprintln(os.Stdout, ui.FormatLineColumns(rows, []float64{2.0, 1.0, 1.0, 1.0, 1.5}))
-			fmt.Fprintf(os.Stdout, "\n%s\n", ui.Dim(fmt.Sprintf("%d app(s) need attention", len(filtered))))
+
+			if flagVerbose {
+				var outdated, failed int
+				for _, r := range display {
+					if r.Outdated {
+						outdated++
+					}
+					if r.Failed {
+						failed++
+					}
+				}
+				fmt.Fprintf(os.Stdout, "\n%s %d total, %s%d outdated%s, %s%d failed%s\n",
+					ui.Dim("("), len(display), ui.Yellow(""), outdated, ui.Dim(""), ui.Red(""), failed, ui.Dim(")"))
+			} else {
+				fmt.Fprintf(os.Stdout, "\n%s\n", ui.Dim(fmt.Sprintf("%d app(s) need attention", len(display))))
+			}
 			return nil
 		},
 	}
