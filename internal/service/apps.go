@@ -1,13 +1,16 @@
 package service
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"go.noz.one/scg/internal/scoop"
+	"go.noz.one/scg/internal/utils"
 )
 
 // AppContext is a minimal interface for what services need from app.Context.
@@ -73,12 +76,22 @@ func (s *AppsService) ListInstalled(filter string) ([]InstalledApp, error) {
 	appsCache.mu.Unlock()
 
 	var all []InstalledApp
+	var errors []error
 	for _, paths := range scoop.BothScopes() {
-		apps, err := scanAppsDir(paths)
+		apps, err := scanAppsDir(paths, s.ctx)
 		if err != nil {
+			if s.ctx.GetVerbose() {
+				s.ctx.GetLogger().Warn(fmt.Sprintf("Failed to scan %s scope: %v", paths.Scope, err))
+			}
+			errors = append(errors, fmt.Errorf("%s: %w", paths.Scope, err))
 			continue
 		}
 		all = append(all, apps...)
+	}
+
+	// If we got no apps but had errors, propagate the first error
+	if len(all) == 0 && len(errors) > 0 {
+		return nil, errors[0]
 	}
 
 	// Sort: name ascending, user scope before global.
@@ -100,9 +113,9 @@ func (s *AppsService) ListInstalled(filter string) ([]InstalledApp, error) {
 
 	// Apply filter.
 	var filtered []InstalledApp
-	lf := filter
+	lf := strings.ToLower(filter)
 	for _, a := range all {
-		if containsFold(a.Name, lf) {
+		if utils.ContainsFoldFast(a.Name, lf) {
 			filtered = append(filtered, a)
 		}
 	}
@@ -128,7 +141,7 @@ func (s *AppsService) InvalidateCache() {
 }
 
 // scanAppsDir reads all installed apps in a single scope's apps directory.
-func scanAppsDir(paths scoop.ScoopPaths) ([]InstalledApp, error) {
+func scanAppsDir(paths scoop.ScoopPaths, ctx AppContext) ([]InstalledApp, error) {
 	entries, err := os.ReadDir(paths.Apps)
 	if err != nil {
 		return nil, err
@@ -145,6 +158,10 @@ func scanAppsDir(paths scoop.ScoopPaths) ([]InstalledApp, error) {
 		}
 		app, err := readAppInfo(name, paths)
 		if err != nil {
+			// Log verbose warning but continue scanning other apps
+			if ctx.GetVerbose() {
+				ctx.GetLogger().Warn(fmt.Sprintf("Failed to read app info for %s: %v", name, err))
+			}
 			continue
 		}
 		apps = append(apps, app)
@@ -178,34 +195,4 @@ func readAppInfo(name string, paths scoop.ScoopPaths) (InstalledApp, error) {
 	}
 
 	return app, nil
-}
-
-func containsFold(s, sub string) bool {
-	if len(sub) == 0 {
-		return true
-	}
-	if len(sub) > len(s) {
-		return false
-	}
-	for i := 0; i <= len(s)-len(sub); i++ {
-		match := true
-		for j := 0; j < len(sub); j++ {
-			c1 := s[i+j]
-			if c1 >= 'A' && c1 <= 'Z' {
-				c1 += 'a' - 'A'
-			}
-			c2 := sub[j]
-			if c2 >= 'A' && c2 <= 'Z' {
-				c2 += 'a' - 'A'
-			}
-			if c1 != c2 {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
-	}
-	return false
 }

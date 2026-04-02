@@ -52,13 +52,24 @@ func (s *BucketService) List(scope scoop.InstallScope) ([]BucketInfo, error) {
 	}
 
 	var allBuckets []BucketInfo
+	var errors []error
 	for _, p := range paths {
 		buckets, err := s.listBucketsInScope(p)
 		if err != nil {
+			if s.ctx.GetVerbose() {
+				s.ctx.GetLogger().Warn(fmt.Sprintf("Failed to list buckets for %s scope: %v", p.Scope, err))
+			}
+			errors = append(errors, fmt.Errorf("%s: %w", p.Scope, err))
 			continue
 		}
 		allBuckets = append(allBuckets, buckets...)
 	}
+
+	// If we got no buckets but had errors, propagate the first error
+	if len(allBuckets) == 0 && len(errors) > 0 {
+		return nil, errors[0]
+	}
+
 	return allBuckets, nil
 }
 
