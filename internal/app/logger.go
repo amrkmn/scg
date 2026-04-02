@@ -30,35 +30,35 @@ func NewConsoleLogger(verbose bool) *ConsoleLogger {
 }
 
 func (l *ConsoleLogger) Log(msg string) {
-	fmt.Fprintln(os.Stdout, msg)
+	_, _ = fmt.Fprintln(os.Stdout, msg)
 }
 
 func (l *ConsoleLogger) Info(msg string) {
-	fmt.Fprintln(os.Stdout, ui.Blue(msg))
+	_, _ = fmt.Fprintln(os.Stdout, ui.Blue(msg))
 }
 
 func (l *ConsoleLogger) Success(msg string) {
-	fmt.Fprintln(os.Stdout, ui.Green(msg))
+	_, _ = fmt.Fprintln(os.Stdout, ui.Green(msg))
 }
 
 func (l *ConsoleLogger) Warn(msg string) {
-	fmt.Fprintln(os.Stderr, ui.Yellow(msg))
+	_, _ = fmt.Fprintln(os.Stderr, ui.Yellow(msg))
 }
 
 func (l *ConsoleLogger) Error(msg string) {
-	fmt.Fprintln(os.Stderr, ui.Red(msg))
+	_, _ = fmt.Fprintln(os.Stderr, ui.Red(msg))
 }
 
 func (l *ConsoleLogger) Verbose(msg string) {
 	if l.verbose {
-		fmt.Fprintln(os.Stdout, ui.Dim(msg))
+		_, _ = fmt.Fprintln(os.Stdout, ui.Dim(msg))
 	}
 }
 
 func (l *ConsoleLogger) Header(msg string) {
-	fmt.Fprintln(os.Stdout, ui.BoldCyan(msg))
+	_, _ = fmt.Fprintln(os.Stdout, ui.BoldCyan(msg))
 }
 
 func (l *ConsoleLogger) Newline() {
-	fmt.Fprintln(os.Stdout)
+	_, _ = fmt.Fprintln(os.Stdout)
 }
