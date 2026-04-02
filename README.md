@@ -63,6 +63,59 @@ To write it to your profile automatically:
 Add-Content $PROFILE "`nInvoke-Expression (scg completion | Out-String)"
 ```
 
+## Development
+
+### Building from Source
+
+```powershell
+# Install dependencies
+go mod download
+
+# Build
+go build -ldflags "-X main.Version=dev -s -w" -o dist/scg.exe ./cmd
+
+# Run tests
+go test ./...
+```
+
+Or use [just](https://github.com/casey/just):
+
+```powershell
+just build      # Build binary
+just test       # Run tests
+just build-all  # Build for all architectures
+```
+
+### Downloading Pre-built Binaries
+
+Pre-built binaries are available on the [Releases](https://github.com/amrkmn/scg/releases) page:
+
+- **Stable releases**: Tagged versions (v1.0.0, v1.1.0, etc.)
+- **Nightly builds**: Latest development builds from `main` branch
+
+## Versioning
+
+This project follows [Semantic Versioning](https://semver.org/):
+
+- **MAJOR**: Breaking changes
+- **MINOR**: New features
+- **PATCH**: Bug fixes
+
+See [VERSIONING.md](VERSIONING.md) for detailed release strategy.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+Please ensure:
+- All tests pass (`go test ./...`)
+- Code is formatted (`go fmt ./...`)
+- Add tests for new features
+
 ## License
 
 [Apache-2.0](LICENSE)
