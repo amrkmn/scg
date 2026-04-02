@@ -85,8 +85,8 @@ jobs:
       - name: Generate checksums
         run: |
           cd dist
-          sha256sum *.exe > checksums.sha256
-          cat checksums.sha256
+          sha256sum *.exe > checksums.txt
+          cat checksums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
