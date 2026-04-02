@@ -24,7 +24,7 @@ func NewInfoCommand() *cobra.Command {
 
 			all := ctx.Services.Manifests.FindAllManifests(args[0])
 			if len(all) == 0 {
-				fmt.Fprintf(os.Stderr, "App '%s' not found in any installed bucket\n", args[0])
+				_, _ = fmt.Fprintf(os.Stderr, "App '%s' not found in any installed bucket\n", args[0])
 				return os.ErrNotExist
 			}
 
@@ -46,13 +46,13 @@ func NewInfoCommand() *cobra.Command {
 				}
 			}
 			if installed == nil && bucketResults > 1 {
-				fmt.Fprintf(os.Stdout, "%s Found in multiple buckets:\n", ui.Info("i"))
+				_, _ = fmt.Fprintf(os.Stdout, "%s Found in multiple buckets:\n", ui.Info("i"))
 				for _, fm := range all {
 					if fm.Source == "bucket" {
-						fmt.Fprintf(os.Stdout, "  %s/%s\n", ui.Cyan(fm.Bucket), fm.App)
+						_, _ = fmt.Fprintf(os.Stdout, "  %s/%s\n", ui.Cyan(fm.Bucket), fm.App)
 					}
 				}
-				fmt.Fprintln(os.Stdout)
+				_, _ = fmt.Fprintln(os.Stdout)
 			}
 
 			fields := ctx.Services.Manifests.ReadManifestPair(args[0], installed, bucket)
@@ -67,7 +67,7 @@ func NewInfoCommand() *cobra.Command {
 			}
 
 			if m == nil {
-				fmt.Fprintf(os.Stderr, "Could not read manifest for '%s'\n", args[0])
+				_, _ = fmt.Fprintf(os.Stderr, "Could not read manifest for '%s'\n", args[0])
 				return os.ErrNotExist
 			}
 
@@ -87,7 +87,7 @@ func infoLine(label, value string) {
 	if pad < 0 {
 		pad = 0
 	}
-	fmt.Fprintf(os.Stdout, "%s%s : %s\n", ui.Bold(label), strings.Repeat(" ", pad), value)
+	_, _ = fmt.Fprintf(os.Stdout, "%s%s : %s\n", ui.Bold(label), strings.Repeat(" ", pad), value)
 }
 
 func printAppInfo(fields service.InfoFields, m *scoop.Manifest, installed, bucket *service.FoundManifest) {

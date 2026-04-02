@@ -29,7 +29,7 @@ func NewStatusCommand() *cobra.Command {
 				return err
 			}
 			if len(apps) == 0 {
-				fmt.Fprintln(os.Stdout, ui.Dim("No apps installed."))
+				_, _ = fmt.Fprintln(os.Stdout, ui.Dim("No apps installed."))
 				return nil
 			}
 
@@ -42,20 +42,20 @@ func NewStatusCommand() *cobra.Command {
 
 			scoopOutdated, _ := ctx.Services.Buckets.CheckScoopStatus(flagLocal)
 			if scoopOutdated {
-				fmt.Fprintf(os.Stdout, "%s Scoop has updates available. Run 'scoop update' to update.\n", ui.Warning("!"))
+				_, _ = fmt.Fprintf(os.Stdout, "%s Scoop has updates available. Run 'scoop update' to update.\n", ui.Warning("!"))
 			} else {
-				fmt.Fprintf(os.Stdout, "%s Scoop is up to date.\n", ui.Success("✓"))
+				_, _ = fmt.Fprintf(os.Stdout, "%s Scoop is up to date.\n", ui.Success("✓"))
 			}
 
 			buckets, _ := ctx.Services.Buckets.List("")
 			bucketsOutdated, _ := ctx.Services.Buckets.CheckBucketsStatus(flagLocal, buckets)
 
 			if bucketsOutdated {
-				fmt.Fprintf(os.Stdout, "%s Some buckets have updates available. Run 'scg bucket update' to update.\n", ui.Warning("!"))
+				_, _ = fmt.Fprintf(os.Stdout, "%s Some buckets have updates available. Run 'scg bucket update' to update.\n", ui.Warning("!"))
 			} else {
-				fmt.Fprintf(os.Stdout, "%s All buckets are up to date.\n", ui.Success("✓"))
+				_, _ = fmt.Fprintf(os.Stdout, "%s All buckets are up to date.\n", ui.Success("✓"))
 			}
-			fmt.Fprintln(os.Stdout)
+			_, _ = fmt.Fprintln(os.Stdout)
 
 			appResults := ctx.Services.Status.CheckStatus(checkApps, buckets, nil)
 
@@ -72,7 +72,7 @@ func NewStatusCommand() *cobra.Command {
 			}
 
 			if len(display) == 0 {
-				fmt.Fprintf(os.Stdout, "%s All installed apps are up to date.\n", ui.Success("✓"))
+				_, _ = fmt.Fprintf(os.Stdout, "%s All installed apps are up to date.\n", ui.Success("✓"))
 				return nil
 			}
 
@@ -114,7 +114,7 @@ func NewStatusCommand() *cobra.Command {
 				rows = append(rows, []string{name, r.Installed, latest, missingDeps, info})
 			}
 
-			fmt.Fprintln(os.Stdout, ui.FormatLineColumns(rows, []float64{2.0, 1.0, 1.0, 1.0, 1.5}))
+			_, _ = fmt.Fprintln(os.Stdout, ui.FormatLineColumns(rows, []float64{2.0, 1.0, 1.0, 1.0, 1.5}))
 
 			if flagVerbose {
 				var outdated, failed int
@@ -126,10 +126,10 @@ func NewStatusCommand() *cobra.Command {
 						failed++
 					}
 				}
-				fmt.Fprintf(os.Stdout, "\n%s %d total, %s%d outdated%s, %s%d failed%s\n",
+				_, _ = fmt.Fprintf(os.Stdout, "\n%s %d total, %s%d outdated%s, %s%d failed%s\n",
 					ui.Dim("("), len(display), ui.Yellow(""), outdated, ui.Dim(""), ui.Red(""), failed, ui.Dim(")"))
 			} else {
-				fmt.Fprintf(os.Stdout, "\n%s\n", ui.Dim(fmt.Sprintf("%d app(s) need attention", len(display))))
+				_, _ = fmt.Fprintf(os.Stdout, "\n%s\n", ui.Dim(fmt.Sprintf("%d app(s) need attention", len(display))))
 			}
 			return nil
 		},

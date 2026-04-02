@@ -43,7 +43,7 @@ func NewUpdateCommand() *cobra.Command {
 			if len(names) == 0 {
 				allBuckets, err := ctx.Services.Buckets.List(scope)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "%s Failed to list buckets: %v\n", ui.Error("error:"), err)
+					_, _ = fmt.Fprintf(os.Stderr, "%s Failed to list buckets: %v\n", ui.Error("error:"), err)
 					os.Exit(1)
 				}
 				for _, b := range allBuckets {

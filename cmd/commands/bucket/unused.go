@@ -30,13 +30,13 @@ func NewUnusedCommand() *cobra.Command {
 
 			buckets, err := ctx.Services.Buckets.List(scope)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s Failed to list buckets: %v\n", ui.Error("error:"), err)
+				_, _ = fmt.Fprintf(os.Stderr, "%s Failed to list buckets: %v\n", ui.Error("error:"), err)
 				os.Exit(1)
 			}
 
 			installedApps, err := ctx.Services.Apps.ListInstalled("")
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s Failed to list installed apps: %v\n", ui.Error("error:"), err)
+				_, _ = fmt.Fprintf(os.Stderr, "%s Failed to list installed apps: %v\n", ui.Error("error:"), err)
 				os.Exit(1)
 			}
 

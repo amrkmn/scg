@@ -35,7 +35,7 @@ func NewRemoveCommand() *cobra.Command {
 			spinner.Stop()
 
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s Failed to remove bucket '%s': %v\n", ui.Error("error:"), name, err)
+				_, _ = fmt.Fprintf(os.Stderr, "%s Failed to remove bucket '%s': %v\n", ui.Error("error:"), name, err)
 				os.Exit(1)
 			}
 

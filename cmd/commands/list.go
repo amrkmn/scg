@@ -54,15 +54,15 @@ func NewListCommand() *cobra.Command {
 					}
 				}
 				data, _ := json.MarshalIndent(out, "", "  ")
-				fmt.Fprintln(os.Stdout, string(data))
+				_, _ = fmt.Fprintln(os.Stdout, string(data))
 				return nil
 			}
 
 			if len(apps) == 0 {
 				if filter != "" {
-					fmt.Fprintf(os.Stdout, "%s No apps matching '%s' found.\n", ui.Warning("!"), filter)
+					_, _ = fmt.Fprintf(os.Stdout, "%s No apps matching '%s' found.\n", ui.Warning("!"), filter)
 				} else {
-					fmt.Fprintln(os.Stdout, ui.Dim("No apps installed."))
+					_, _ = fmt.Fprintln(os.Stdout, ui.Dim("No apps installed."))
 				}
 				return nil
 			}
@@ -104,14 +104,14 @@ func NewListCommand() *cobra.Command {
 				})
 			}
 
-			fmt.Fprintln(os.Stdout, ui.FormatLineColumns(rows, []float64{2.0, 1.0, 1.0, 0.5, 1.5}))
+			_, _ = fmt.Fprintln(os.Stdout, ui.FormatLineColumns(rows, []float64{2.0, 1.0, 1.0, 0.5, 1.5}))
 
 			// Footer
 			suffix := ""
 			if filter != "" {
 				suffix = fmt.Sprintf(" matching '%s'", filter)
 			}
-			fmt.Fprintf(os.Stdout, "\n%s\n", ui.Dim(fmt.Sprintf("%d app(s) installed%s", len(apps), suffix)))
+			_, _ = fmt.Fprintf(os.Stdout, "\n%s\n", ui.Dim(fmt.Sprintf("%d app(s) installed%s", len(apps), suffix)))
 			return nil
 		},
 	}

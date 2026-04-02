@@ -26,7 +26,7 @@ func NewPrefixCommand() *cobra.Command {
 			}
 			path, err := ctx.Services.Apps.GetAppPrefix(args[0], scope)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "App '%s' not found in %s scope\n", args[0], scope)
+				_, _ = fmt.Fprintf(os.Stderr, "App '%s' not found in %s scope\n", args[0], scope)
 				return err
 			}
 			fmt.Println(path)

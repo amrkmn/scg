@@ -29,7 +29,7 @@ func NewAddCommand() *cobra.Command {
 			} else {
 				url = known.GetKnownBucket(name)
 				if url == "" {
-					fmt.Fprintf(os.Stderr, "%s bucket '%s' not found in known buckets and no URL provided\n",
+					_, _ = fmt.Fprintf(os.Stderr, "%s bucket '%s' not found in known buckets and no URL provided\n",
 						ui.Error("error:"), name)
 					os.Exit(1)
 				}
@@ -48,7 +48,7 @@ func NewAddCommand() *cobra.Command {
 			spinner.Stop()
 
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s Failed to add bucket '%s': %v\n", ui.Error("error:"), name, err)
+				_, _ = fmt.Fprintf(os.Stderr, "%s Failed to add bucket '%s': %v\n", ui.Error("error:"), name, err)
 				os.Exit(1)
 			}
 

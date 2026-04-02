@@ -19,7 +19,7 @@ func NewWhichCommand() *cobra.Command {
 			ctx := cmdctx.MustFromCmd(cmd)
 			paths, err := ctx.Services.Shims.FindExecutable(args[0])
 			if err != nil || len(paths) == 0 {
-				fmt.Fprintf(os.Stderr, "Command '%s' not found\n", args[0])
+				_, _ = fmt.Fprintf(os.Stderr, "Command '%s' not found\n", args[0])
 				return os.ErrNotExist
 			}
 			for _, p := range paths {
