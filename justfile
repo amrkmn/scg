@@ -5,22 +5,22 @@ VERSION := env("VERSION", "0.1.0")
 build:
     go build -ldflags "-X main.Version={{VERSION}} -s -w" -o dist/scg.exe ./cmd
 
-# build: compile scg binary for Windows x64 (explicit)
-build-win64:
-    GOOS=windows GOARCH=amd64 go build -ldflags "-X main.Version={{VERSION}} -s -w" -o dist/scg-{{VERSION}}-windows-amd64.exe ./cmd
+# build: compile scg binary for Windows AMD64
+build-amd64:
+    GOOS=windows GOARCH=amd64 go build -ldflags "-X main.Version={{VERSION}} -s -w" -o dist/scg-amd64.exe ./cmd
 
 # build: compile scg binary for Windows x86
-build-win32:
-    GOOS=windows GOARCH=386 go build -ldflags "-X main.Version={{VERSION}} -s -w" -o dist/scg-{{VERSION}}-windows-386.exe ./cmd
+build-386:
+    GOOS=windows GOARCH=386 go build -ldflags "-X main.Version={{VERSION}} -s -w" -o dist/scg-386.exe ./cmd
 
 # build: compile scg binary for Windows ARM64
 build-arm64:
-    GOOS=windows GOARCH=arm64 go build -ldflags "-X main.Version={{VERSION}} -s -w" -o dist/scg-{{VERSION}}-windows-arm64.exe ./cmd
+    GOOS=windows GOARCH=arm64 go build -ldflags "-X main.Version={{VERSION}} -s -w" -o dist/scg-arm64.exe ./cmd
 
 # build: compile scg binaries for all architectures
 build-all:
-    just build-win64
-    just build-win32
+    just build-amd64
+    just build-386
     just build-arm64
 
 # build: compile scg binary with debug symbols
