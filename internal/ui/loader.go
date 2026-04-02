@@ -53,7 +53,7 @@ func (s *Spinner) Start() {
 				s.frame++
 				msg := s.message
 				s.mu.Unlock()
-				fmt.Fprintf(os.Stdout, "%s%s%s", clearLine, msg, f)
+				_, _ = fmt.Fprintf(os.Stdout, "%s%s%s", clearLine, msg, f)
 			}
 		}
 	}()
@@ -69,14 +69,14 @@ func (s *Spinner) stop() {
 	s.running = false
 	s.ticker.Stop()
 	close(s.done)
-	fmt.Fprint(os.Stdout, clearLine)
+	_, _ = fmt.Fprint(os.Stdout, clearLine)
 }
 
 // Succeed stops the spinner and prints a success message.
 func (s *Spinner) Succeed(msg string) {
 	s.stop()
 	if msg != "" {
-		fmt.Fprintln(os.Stdout, Green("✓")+" "+msg)
+		_, _ = fmt.Fprintln(os.Stdout, Green("✓")+" "+msg)
 	}
 }
 
@@ -84,7 +84,7 @@ func (s *Spinner) Succeed(msg string) {
 func (s *Spinner) Fail(msg string) {
 	s.stop()
 	if msg != "" {
-		fmt.Fprintln(os.Stdout, Red("✗")+" "+msg)
+		_, _ = fmt.Fprintln(os.Stdout, Red("✗")+" "+msg)
 	}
 }
 
@@ -180,7 +180,7 @@ func (p *ProgressBar) Stop() {
 	p.mu.Lock()
 	p.stopped = true
 	p.mu.Unlock()
-	fmt.Fprint(os.Stdout, clearLine)
+	_, _ = fmt.Fprint(os.Stdout, clearLine)
 }
 
 // Complete prints the bar at 100% and moves to a new line.
@@ -189,7 +189,7 @@ func (p *ProgressBar) Complete() {
 	p.current = p.total
 	p.mu.Unlock()
 	p.render()
-	fmt.Fprintln(os.Stdout)
+	_, _ = fmt.Fprintln(os.Stdout)
 }
 
 func (p *ProgressBar) render() {
@@ -221,5 +221,5 @@ func (p *ProgressBar) render() {
 	}
 
 	line := fmt.Sprintf("%s[%s] %d/%d %s%s", clearLine, bar, current, total, msg, suffix)
-	fmt.Fprint(os.Stdout, line)
+	_, _ = fmt.Fprint(os.Stdout, line)
 }

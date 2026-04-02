@@ -25,7 +25,7 @@ func NewListCommand() *cobra.Command {
 			}
 
 			if len(buckets) == 0 {
-				fmt.Fprintln(os.Stdout, ui.Dim("No buckets installed."))
+				_, _ = fmt.Fprintln(os.Stdout, ui.Dim("No buckets installed."))
 				return nil
 			}
 
@@ -58,8 +58,8 @@ func NewListCommand() *cobra.Command {
 				})
 			}
 
-			fmt.Fprintln(os.Stdout, ui.FormatLineColumns(rows, []float64{1.0, 3.0, 1.5, 0.5}))
-			fmt.Fprintf(os.Stdout, "\n%s\n", ui.Dim(fmt.Sprintf("%d bucket(s) installed", len(buckets))))
+			_, _ = fmt.Fprintln(os.Stdout, ui.FormatLineColumns(rows, []float64{1.0, 3.0, 1.5, 0.5}))
+			_, _ = fmt.Fprintf(os.Stdout, "\n%s\n", ui.Dim(fmt.Sprintf("%d bucket(s) installed", len(buckets))))
 			return nil
 		},
 	}

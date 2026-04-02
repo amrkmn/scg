@@ -75,20 +75,20 @@ scg cat extras/enso`,
 
 			// Header showing source.
 			if chosen.Source == "installed" {
-				fmt.Fprintf(os.Stdout, "%s %s\n",
+				_, _ = fmt.Fprintf(os.Stdout, "%s %s\n",
 					ui.Dim("Manifest from installed app"),
 					ui.Dim("("+chosen.Bucket+")"),
 				)
 			} else {
-				fmt.Fprintf(os.Stdout, "%s %s\n",
+				_, _ = fmt.Fprintf(os.Stdout, "%s %s\n",
 					ui.Dim("Manifest from bucket"),
 					ui.Cyan(chosen.Bucket),
 				)
 			}
-			fmt.Fprintln(os.Stdout)
+			_, _ = fmt.Fprintln(os.Stdout)
 
 			// Output raw file content to preserve property order.
-			fmt.Fprintln(os.Stdout, strings.TrimSpace(string(data)))
+			_, _ = fmt.Fprintln(os.Stdout, strings.TrimSpace(string(data)))
 			return nil
 		},
 	}

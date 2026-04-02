@@ -50,7 +50,7 @@ func TestCacheFileMatching(t *testing.T) {
 			if prefixLen < len(nameLower) {
 				nextChar := nameLower[prefixLen]
 				// If next char is a letter, this is a different app
-				if !(nextChar >= 'a' && nextChar <= 'z') {
+				if nextChar < 'a' || nextChar > 'z' {
 					matches = true
 				}
 			} else {
