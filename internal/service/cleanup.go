@@ -103,6 +103,7 @@ func (s *CleanupService) CleanupApp(appName string, scope scoop.InstallScope, op
 		cacheEntries, err := os.ReadDir(cacheDir)
 		if err == nil {
 			prefix := strings.ToLower(appName) + "#"
+			prefixLen := len(prefix)
 			for _, e := range cacheEntries {
 				if e.IsDir() {
 					continue
@@ -110,6 +111,16 @@ func (s *CleanupService) CleanupApp(appName string, scope scoop.InstallScope, op
 				nameLower := strings.ToLower(e.Name())
 				if !strings.HasPrefix(nameLower, prefix) {
 					continue
+				}
+				// Verify this is actually our app's cache file, not a prefix match
+				// (e.g., "git#" should NOT match "git-lfs#3.2.0").
+				// After the prefix, there should be a version number or '#'.
+				if prefixLen < len(nameLower) {
+					nextChar := nameLower[prefixLen]
+					// If next char is a letter, this is a different app (e.g., git-lfs)
+					if (nextChar >= 'a' && nextChar <= 'z') {
+						continue
+					}
 				}
 				// Keep cache file for current version.
 				if strings.Contains(e.Name(), "#"+currentVersion+"#") || strings.HasSuffix(e.Name(), "#"+currentVersion) {

@@ -24,10 +24,15 @@ type ScoopPaths struct {
 }
 
 // GetUserRoot returns the user-scoped Scoop root directory (%USERPROFILE%\scoop).
+// Falls back to \scoop if USERPROFILE and HOME are both empty (unusual on Windows).
 func GetUserRoot() string {
 	profile := os.Getenv("USERPROFILE")
 	if profile == "" {
 		profile = os.Getenv("HOME")
+	}
+	if profile == "" {
+		// Fallback for unusual environments; operations may fail later
+		return filepath.Join(string(os.PathSeparator), "scoop")
 	}
 	return filepath.Join(profile, "scoop")
 }
