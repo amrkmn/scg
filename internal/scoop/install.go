@@ -7,11 +7,12 @@ import (
 	"strings"
 )
 
-// InstallInfo represents the install.json file stored in each app's current/ directory.
+// InstallInfo represents the install.json file stored in each app's version directory.
 type InstallInfo struct {
-	Bucket string `json:"bucket"`
-	Hold   bool   `json:"hold"`
-	URL    string `json:"url"`
+	Architecture string `json:"architecture"`
+	Bucket       string `json:"bucket"`
+	Hold         bool   `json:"hold,omitempty"`
+	URL          string `json:"url"`
 }
 
 // ReadInstallInfo reads and parses an install.json file from disk.

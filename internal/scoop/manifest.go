@@ -15,6 +15,8 @@ type Manifest struct {
 	Description  string            `json:"description"`
 	Homepage     string            `json:"homepage"`
 	License      any               `json:"license"`      // string or {"identifier":..., "url":...}
+	URL         any               `json:"url"`          // string or []string
+	Hash        any               `json:"hash"`         // string or []string
 	Bin          any               `json:"bin"`          // string | []any | map[string]string
 	Depends      any               `json:"depends"`      // string | []string
 	Deprecated   any               `json:"deprecated"`   // bool or string (replacement app name)
@@ -25,6 +27,10 @@ type Manifest struct {
 	Persist      any               `json:"persist"`   // string | []any
 	Notes        any               `json:"notes"`     // string | []string
 	Suggest      map[string]any    `json:"suggest"`
+	Installer   any               `json:"installer"`  // map with script property
+	Uninstaller any               `json:"uninstaller"`
+	PreInstall   any               `json:"pre_install"`  // string or []string
+	PostInstall  any               `json:"post_install"` // string or []string
 	Comments     any               `json:"##"`
 }
 
@@ -39,4 +45,25 @@ func ReadManifest(path string) (*Manifest, error) {
 		return nil, err
 	}
 	return &m, nil
+}
+
+// GetDependencies returns the list of dependency app names from a manifest's depends field.
+func GetDependencies(depends any) []string {
+	if depends == nil {
+		return nil
+	}
+	switch v := depends.(type) {
+	case string:
+		return []string{v}
+	case []any:
+		var deps []string
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				deps = append(deps, s)
+			}
+		}
+		return deps
+	default:
+		return nil
+	}
 }
