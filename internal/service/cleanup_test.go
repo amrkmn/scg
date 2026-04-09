@@ -111,6 +111,13 @@ func TestCleanupResultAccumulation(t *testing.T) {
 		},
 	}
 
+	// Verify struct fields are populated correctly.
+	if result.App != "test-app" {
+		t.Errorf("Expected App 'test-app', got %q", result.App)
+	}
+	if result.Scope != scoop.ScopeUser {
+		t.Errorf("Expected ScopeUser, got %q", result.Scope)
+	}
 	if len(result.OldVersions) != 2 {
 		t.Errorf("Expected 2 old versions, got %d", len(result.OldVersions))
 	}
