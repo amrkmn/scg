@@ -20,6 +20,7 @@ type Services struct {
 	Shims     *service.ShimService
 	Config    *service.ConfigService
 	Cleanup   *service.CleanupService
+	Installer *service.InstallService
 }
 
 // NewContext constructs a fully wired Context with all services initialised.
@@ -38,6 +39,7 @@ func NewContext(version string, verbose bool) *Context {
 		Shims:     service.NewShimService(ctx),
 		Config:    service.NewConfigService(ctx),
 		Cleanup:   service.NewCleanupService(ctx),
+		Installer: service.NewInstallService(ctx),
 	}
 	return ctx
 }
