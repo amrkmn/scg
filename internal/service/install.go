@@ -136,6 +136,22 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 		}
 	}
 
+	binDefs := install.ParseBinField(m.Bin, arch)
+	archBins := install.ParseArchBinField(m.Architecture, arch)
+	binDefs = append(binDefs, archBins...)
+	preInstall := getArchString(m, "pre_install", arch)
+	currentLink := filepath.Join(appDir, "current")
+	persistItems := install.ParsePersistField(m.Persist)
+	archPersist := parseArchPersist(m.Architecture, arch)
+	persistItems = append(persistItems, archPersist...)
+	envPaths := install.EnvAddPaths(m.EnvAddPath, currentLink)
+	envVars := install.EnvSetVars(m.EnvSet)
+	postInstall := getArchString(m, "post_install", arch)
+
+	currentDir := versionDir
+	hookEnv := install.SetupHookEnvVars(currentDir, m.Version, arch, opts.Scope == scoop.ScopeGlobal)
+	log := s.ctx.GetLogger().Log
+
 	// Resolve download URL.
 	dlURL, err := resolveDownloadURL(m, arch)
 	if err != nil {
@@ -144,7 +160,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	}
 
 	// Download.
-	s.ctx.GetLogger().Log(fmt.Sprintf("Downloading %s...", appInput))
+	log("  Downloading " + appInput + "...")
 	dm := install.NewDownloadManager(opts.Scope, s.ctx.GetVerbose())
 	dlResult, err := dm.Download(appInput, m.Version, dlURL, !opts.NoCache, opts.Proxy)
 	if err != nil {
@@ -162,7 +178,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	if !opts.SkipHash {
 		expectedHash, err := resolveHash(m, arch)
 		if err == nil && expectedHash != nil {
-			s.ctx.GetLogger().Log("  Verifying hash...")
+			log("  Verifying hash...")
 			hashFormat, parseErr := install.ParseHash(*expectedHash)
 			if parseErr != nil {
 				result.Error = fmt.Errorf("failed to parse hash: %w", parseErr)
@@ -179,7 +195,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	}
 
 	// Extract.
-	s.ctx.GetLogger().Log(fmt.Sprintf("  Extracting to %s...", versionDir))
+	log("  Extracting to " + versionDir + "...")
 	extractor := install.NewExtractor(false, s.ctx.GetVerbose())
 	extractOpts := install.ExtractionOptions{
 		InnoSetup: isManifestInnoSetup(m, arch),
@@ -190,14 +206,9 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 		return result
 	}
 
-	// Get hook environment variables.
-	currentDir := versionDir // Before junction creation.
-	hookEnv := install.SetupHookEnvVars(currentDir, m.Version, arch, opts.Scope == scoop.ScopeGlobal)
-
 	// Run pre_install hook.
-	preInstall := getArchString(m, "pre_install", arch)
 	if preInstall != "" {
-		s.ctx.GetLogger().Log("  Running pre_install hook...")
+		log("  Running pre_install hook...")
 		if err := install.RunHook("pre_install", preInstall, currentDir, hookEnv); err != nil {
 			result.Error = fmt.Errorf("pre_install hook failed: %w", err)
 			return result
@@ -205,21 +216,15 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	}
 
 	// Create current/ junction.
-	currentLink := filepath.Join(appDir, "current")
-	s.ctx.GetLogger().Log("  Creating current/ junction...")
+	log("  Creating current/ junction...")
 	if err := install.CreateJunction(currentLink, versionDir); err != nil {
 		result.Error = fmt.Errorf("failed to create junction: %w", err)
 		return result
 	}
 
 	// Create shims.
-	binDefs := install.ParseBinField(m.Bin, arch)
-	// Also add architecture-specific bins.
-	archBins := install.ParseArchBinField(m.Architecture, arch)
-	binDefs = append(binDefs, archBins...)
-
 	if len(binDefs) > 0 {
-		s.ctx.GetLogger().Log(fmt.Sprintf("  Creating %d shim(s)...", len(binDefs)))
+		log("  Creating " + fmt.Sprint(len(binDefs)) + " shim(s)...")
 		if err := install.CreateShims(binDefs, currentLink, opts.Scope); err != nil {
 			s.ctx.GetLogger().Warn(fmt.Sprintf("  Warning: shim creation: %v", err))
 			// Continue - best effort.
@@ -227,30 +232,25 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	}
 
 	// Setup persist data.
-	persistItems := install.ParsePersistField(m.Persist)
-	archPersist := parseArchPersist(m.Architecture, arch)
-	persistItems = append(persistItems, archPersist...)
 	if len(persistItems) > 0 {
-		s.ctx.GetLogger().Log(fmt.Sprintf("  Setting up %d persist item(s)...", len(persistItems)))
+		log("  Setting up " + fmt.Sprint(len(persistItems)) + " persist item(s)...")
 		if err := install.SetupPersistData(appInput, persistItems, currentLink, opts.Scope); err != nil {
 			s.ctx.GetLogger().Warn(fmt.Sprintf("  Warning: persist setup: %v", err))
 		}
 	}
 
 	// Add to PATH.
-	envPaths := install.EnvAddPaths(m.EnvAddPath, currentLink)
 	if len(envPaths) > 0 {
-		s.ctx.GetLogger().Log(fmt.Sprintf("  Adding %d path(s) to PATH...", len(envPaths)))
+		log("  Adding " + fmt.Sprint(len(envPaths)) + " path(s) to PATH...")
 		if err := install.AddToPath(envPaths, opts.Scope); err != nil {
 			s.ctx.GetLogger().Warn(fmt.Sprintf("  Warning: PATH update: %v", err))
 		}
 	}
 
 	// Set environment variables.
-	envVars := install.EnvSetVars(m.EnvSet)
 	if len(envVars) > 0 {
 		for k, v := range envVars {
-			s.ctx.GetLogger().Log(fmt.Sprintf("  Setting %s=%s", k, v))
+			log("  Setting " + k + "=" + v)
 			if err := install.SetEnvVar(k, v, opts.Scope); err != nil {
 				s.ctx.GetLogger().Warn(fmt.Sprintf("  Warning: env set %s: %v", k, err))
 			}
@@ -258,9 +258,8 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	}
 
 	// Run post_install hook.
-	postInstall := getArchString(m, "post_install", arch)
 	if postInstall != "" {
-		s.ctx.GetLogger().Log("  Running post_install hook...")
+		log("  Running post_install hook...")
 		if err := install.RunHook("post_install", postInstall, currentDir, hookEnv); err != nil {
 			result.Error = fmt.Errorf("post_install hook failed: %w", err)
 			return result
@@ -268,6 +267,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	}
 
 	// Save install.json.
+	log("  Saving metadata...")
 	info := &install.InstallInfo{
 		Architecture: arch,
 		URL:          dlURL,

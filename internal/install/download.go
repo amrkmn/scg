@@ -122,7 +122,7 @@ func (dm *DownloadManager) Download(app, version, downloadURL string, useCache b
 	}, nil
 }
 
-// downloadHTTP downloads a file using Go's net/http package.
+// downloadHTTP downloads a file using Go's net/http package with a progress bar.
 func (dm *DownloadManager) downloadHTTP(destPath, downloadURL, proxy string) error {
 	client := &http.Client{
 		Timeout: 30 * time.Minute,
@@ -153,7 +153,9 @@ func (dm *DownloadManager) downloadHTTP(destPath, downloadURL, proxy string) err
 	}
 	defer func() { _ = f.Close() }()
 
-	_, err = io.Copy(f, resp.Body)
+	pw := newProgressWriter(resp.ContentLength)
+	_, err = io.Copy(io.MultiWriter(f, pw), resp.Body)
+	pw.finish()
 	return err
 }
 
@@ -191,4 +193,64 @@ func (dm *DownloadManager) downloadWithAria2(aria2Path, destPath, downloadURL, p
 		Downloaded: true,
 		Size:       fi.Size(),
 	}, nil
+}
+
+// progressWriter tracks download progress and displays a progress bar.
+type progressWriter struct {
+	total   int64
+	written int64
+	start   time.Time
+}
+
+func newProgressWriter(total int64) *progressWriter {
+	return &progressWriter{
+		total: total,
+		start: time.Now(),
+	}
+}
+
+func (pw *progressWriter) Write(p []byte) (int, error) {
+	n := len(p)
+	pw.written += int64(n)
+	pw.print()
+	return n, nil
+}
+
+func (pw *progressWriter) print() {
+	if pw.total <= 0 {
+		return
+	}
+	pct := float64(pw.written) / float64(pw.total) * 100
+	if pct > 100 {
+		pct = 100
+	}
+	barWidth := 50
+	filled := int(pct / 100 * float64(barWidth))
+	if filled > barWidth {
+		filled = barWidth
+	}
+	bar := strings.Repeat("=", filled)
+	if filled < barWidth {
+		bar += ">"
+		bar += strings.Repeat(" ", barWidth-filled-1)
+	}
+	fmt.Fprintf(os.Stderr, "\r  (%s) [%s] %.0f%%", humanSize(pw.written), bar, pct)
+}
+
+func (pw *progressWriter) finish() {
+	pw.print()
+	fmt.Fprint(os.Stderr, "\r\033[K")
+}
+
+func humanSize(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }

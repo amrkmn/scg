@@ -1,7 +1,6 @@
 package install
 
 import (
-	"path/filepath"
 	"testing"
 )
 
@@ -19,19 +18,19 @@ func TestParseBinField(t *testing.T) {
 		{
 			name:  "string input",
 			input: "bin/app.exe",
-			want:  []ShimDef{{Target: "bin/app.exe", Name: "app.exe"}},
+			want:  []ShimDef{{Target: "bin/app.exe", Name: "app"}},
 		},
 		{
 			name:  "string with path",
 			input: "bin/git/cmd/git.exe",
-			want:  []ShimDef{{Target: "bin/git/cmd/git.exe", Name: "git.exe"}},
+			want:  []ShimDef{{Target: "bin/git/cmd/git.exe", Name: "git"}},
 		},
 		{
 			name:  "array of strings",
 			input: []any{"bin/app.exe", "bin/helper.exe"},
 			want: []ShimDef{
-				{Target: "bin/app.exe", Name: "app.exe"},
-				{Target: "bin/helper.exe", Name: "helper.exe"},
+				{Target: "bin/app.exe", Name: "app"},
+				{Target: "bin/helper.exe", Name: "helper"},
 			},
 		},
 		{
@@ -59,7 +58,7 @@ func TestParseBinField(t *testing.T) {
 			name:  "map with empty alias uses basename",
 			input: map[string]any{"bin/app.exe": ""},
 			want: []ShimDef{
-				{Target: "bin/app.exe", Name: "app.exe"},
+				{Target: "bin/app.exe", Name: "app"},
 			},
 		},
 		{
@@ -69,7 +68,7 @@ func TestParseBinField(t *testing.T) {
 				[]any{"cmd/git-gui.exe", "git-gui", "--gui"},
 			},
 			want: []ShimDef{
-				{Target: "cmd/git.exe", Name: "git.exe"},
+				{Target: "cmd/git.exe", Name: "git"},
 				{Target: "cmd/git-gui.exe", Name: "git-gui", Args: "--gui"},
 			},
 		},
@@ -147,8 +146,8 @@ func TestParseBinFieldBasename(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatal("expected 1 result")
 	}
-	if got[0].Name != "myapp.exe" {
-		t.Errorf("Name = %q, want %q", got[0].Name, "myapp.exe")
+	if got[0].Name != "myapp" {
+		t.Errorf("Name = %q, want %q", got[0].Name, "myapp")
 	}
 }
 
@@ -169,10 +168,23 @@ func TestParseBinFieldSingleItemArray(t *testing.T) {
 	}
 }
 
-func TestShimDefPathJoin(t *testing.T) {
-	def := ShimDef{Target: filepath.Join("bin", "app.exe"), Name: "app"}
-	absPath := filepath.Join("C:", "Users", "test", "scoop", "apps", "myapp", "current", def.Target)
-	if filepath.Base(absPath) != "app.exe" {
-		t.Errorf("filepath.Base of joined path = %q, want %q", filepath.Base(absPath), "app.exe")
+func TestShimName(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"wush.exe", "wush"},
+		{"terraform.cmd", "terraform"},
+		{"script.ps1", "script"},
+		{"tool.bat", "tool"},
+		{"bin/app.exe", "app"},
+		{"noext", "noext"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := shimName(tt.input); got != tt.want {
+				t.Errorf("shimName(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
 	}
 }

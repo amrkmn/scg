@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"go.noz.one/scg/internal/scoop"
 )
@@ -146,9 +147,22 @@ func copyFile(src, dst string) error {
 	return os.Chmod(dst, fi.Mode())
 }
 
+// shimName derives the shim name from a target path, stripping common executable extensions.
+// "wush.exe" → "wush", "terraform.cmd" → "terraform", "script.ps1" → "script".
+// Names without known extensions are returned as-is.
+func shimName(target string) string {
+	base := filepath.Base(target)
+	ext := strings.ToLower(filepath.Ext(base))
+	switch ext {
+	case ".exe", ".cmd", ".bat", ".ps1":
+		return base[:len(base)-len(ext)]
+	}
+	return base
+}
+
 // ParseBinField parses the manifest's bin field into a list of ShimDef entries.
 // The bin field can be:
-//   - string: "bin/app.exe" → {Target: "bin/app.exe"}
+//   - string: "bin/app.exe" → {Target: "bin/app.exe", Name: "app"}
 //   - []any: ["bin/app.exe", "alias"] → {Target: "bin/app.exe", Name: "alias"}
 //   - []any: ["bin/app.exe", "alias", "--flag"] → {Target: "bin/app.exe", Name: "alias", Args: "--flag"}
 //   - map: {"bin/app.exe": "alias"} → {Target: "bin/app.exe", Name: "alias"}
@@ -163,7 +177,7 @@ func ParseBinField(bin any, arch string) []ShimDef {
 	case string:
 		defs = append(defs, ShimDef{
 			Target: v,
-			Name:   filepath.Base(v),
+			Name:   shimName(v),
 		})
 	case []any:
 		for _, item := range v {
@@ -171,7 +185,7 @@ func ParseBinField(bin any, arch string) []ShimDef {
 		}
 	case map[string]any:
 		for target, alias := range v {
-			name := filepath.Base(target)
+			name := shimName(target)
 			if aliasStr, ok := alias.(string); ok && aliasStr != "" {
 				name = aliasStr
 			}
@@ -189,7 +203,7 @@ func ParseBinField(bin any, arch string) []ShimDef {
 func parseBinItem(item any) []ShimDef {
 	switch v := item.(type) {
 	case string:
-		return []ShimDef{{Target: v, Name: filepath.Base(v)}}
+		return []ShimDef{{Target: v, Name: shimName(v)}}
 	case []any:
 		if len(v) == 0 {
 			return nil
@@ -199,7 +213,7 @@ func parseBinItem(item any) []ShimDef {
 			return nil
 		}
 
-		name := filepath.Base(target)
+		name := shimName(target)
 		args := ""
 
 		if len(v) >= 2 {
