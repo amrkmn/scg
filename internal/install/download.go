@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"go.noz.one/scg/internal/scoop"
@@ -141,7 +140,7 @@ func (dm *DownloadManager) downloadHTTP(destPath, downloadURL, proxy string) err
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
@@ -151,7 +150,7 @@ func (dm *DownloadManager) downloadHTTP(destPath, downloadURL, proxy string) err
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	_, err = io.Copy(f, resp.Body)
 	return err
@@ -175,7 +174,7 @@ func (dm *DownloadManager) downloadWithAria2(aria2Path, destPath, downloadURL, p
 	args = append(args, downloadURL)
 
 	cmd := exec.Command(aria2Path, args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = hideConsole()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("aria2 failed: %w\n%s", err, out)

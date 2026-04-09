@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	"syscall"
 )
 
 // RunHook executes a PowerShell pre_install or post_install script.
@@ -42,7 +41,7 @@ func RunHook(hookType, script, appDir string, envVars map[string]string) error {
 		"-Command", fullScript.String(),
 	)
 	cmd.Dir = appDir
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = hideConsole()
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

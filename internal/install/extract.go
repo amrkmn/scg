@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 )
 
 // Extractor handles archive extraction for Scoop packages.
@@ -78,7 +77,7 @@ func (e *Extractor) extractZipNative(archivePath, destDir string) error {
 	if err != nil {
 		return err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	for _, f := range r.File {
 		targetPath := filepath.Join(destDir, f.Name)
@@ -115,7 +114,7 @@ func (e *Extractor) extract7zip(archivePath, destDir string) error {
 	}
 
 	cmd := exec.Command(sevenZipPath, args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = hideConsole()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("7zip extraction failed: %w\n%s", err, out)
@@ -137,7 +136,7 @@ func (e *Extractor) extractMSI(archivePath, destDir string) error {
 // extractLessmsi extracts an MSI using lessmsi.
 func (e *Extractor) extractLessmsi(lessmsiPath, archivePath, destDir string) error {
 	cmd := exec.Command(lessmsiPath, "x", archivePath, destDir)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = hideConsole()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("lessmsi extraction failed: %w\n%s", err, out)
@@ -148,7 +147,7 @@ func (e *Extractor) extractLessmsi(lessmsiPath, archivePath, destDir string) err
 // extractMSIExec extracts an MSI using msiexec.
 func (e *Extractor) extractMSIExec(archivePath, destDir string) error {
 	cmd := exec.Command("msiexec", "/a", archivePath, "/qn", fmt.Sprintf("TARGETDIR=%s", destDir))
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = hideConsole()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("msiexec extraction failed: %w\n%s", err, out)
@@ -164,7 +163,7 @@ func (e *Extractor) extractInnoSetup(archivePath, destDir string) error {
 	}
 
 	cmd := exec.Command(innounpPath, "-x", "-d"+destDir, "-y", archivePath)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = hideConsole()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("innounp extraction failed: %w\n%s", err, out)
@@ -205,13 +204,13 @@ func extractZipFile(f *zip.File, targetPath string) error {
 	if err != nil {
 		return err
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	w, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, f.Mode())
 	if err != nil {
 		return err
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	_, err = io.Copy(w, rc)
 	return err
