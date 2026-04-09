@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // InstallScope is an alias for scoop.InstallScope for convenience.
@@ -32,7 +33,7 @@ func CreateJunction(link, target string) error {
 	// Create the junction using cmd /c mklink /j.
 	cmd := exec.Command("cmd", "/c", "mklink", "/j",
 		shellQuote(link), shellQuote(target))
-	cmd.SysProcAttr = hideConsole()
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to create junction %s => %s: %w\n%s", link, target, err, out)
 	}
@@ -53,14 +54,14 @@ func RemoveJunction(link string) error {
 // removeReadOnly removes the read-only attribute from a file or directory.
 func removeReadOnly(path string) {
 	cmd := exec.Command("attrib", "-R", "/L", path)
-	cmd.SysProcAttr = hideConsole()
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	_ = cmd.Run()
 }
 
 // setReadOnly sets the read-only attribute on a file or directory.
 func setReadOnly(path string) {
 	cmd := exec.Command("attrib", "+R", "/L", path)
-	cmd.SysProcAttr = hideConsole()
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	_ = cmd.Run()
 }
 

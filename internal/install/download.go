@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"go.noz.one/scg/internal/scoop"
@@ -174,7 +175,7 @@ func (dm *DownloadManager) downloadWithAria2(aria2Path, destPath, downloadURL, p
 	args = append(args, downloadURL)
 
 	cmd := exec.Command(aria2Path, args...)
-	cmd.SysProcAttr = hideConsole()
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("aria2 failed: %w\n%s", err, out)

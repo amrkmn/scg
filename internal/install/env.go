@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"go.noz.one/scg/internal/scoop"
 )
@@ -109,7 +110,7 @@ func SetEnvVar(keyStr, value string, scope scoop.InstallScope) error {
 
 	script := fmt.Sprintf("[Environment]::SetEnvironmentVariable('%s', '%s', %s)", keyStr, value, scopeStr)
 	cmd := exec.Command(psPath, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
-	cmd.SysProcAttr = hideConsole()
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to set env var %s: %w\n%s", keyStr, err, out)
 	}
@@ -132,7 +133,7 @@ func RemoveEnvVar(keyStr string, scope scoop.InstallScope) error {
 
 	script := fmt.Sprintf("[Environment]::SetEnvironmentVariable('%s', $null, %s)", keyStr, scopeStr)
 	cmd := exec.Command(psPath, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
-	cmd.SysProcAttr = hideConsole()
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to remove env var %s: %w\n%s", keyStr, err, out)
 	}
@@ -151,7 +152,7 @@ func getRegistryPath(scope scoop.InstallScope) (string, error) {
 	}
 
 	cmd := exec.Command("reg", args...)
-	cmd.SysProcAttr = hideConsole()
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", err
@@ -198,7 +199,7 @@ func setRegistryPath(pathValue string, scope scoop.InstallScope) error {
 	escapedPath := strings.ReplaceAll(pathValue, "'", "''")
 	script := fmt.Sprintf("[Environment]::SetEnvironmentVariable('PATH', '%s', %s)", escapedPath, scopeStr)
 	cmd := exec.Command(psPath, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
-	cmd.SysProcAttr = hideConsole()
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to set PATH: %w\n%s", err, out)
 	}
@@ -216,7 +217,7 @@ func broadcastEnvironmentChange() {
 
 	script := `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Win32 { [DllImport(\"user32.dll\", SetLastError=true, CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult); }'; [Win32]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [IntPtr]::Zero, 'Environment', 2, 5000, [ref]([IntPtr]::Zero))`
 	cmd := exec.Command(psPath, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
-	cmd.SysProcAttr = hideConsole()
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	_ = cmd.Run()
 }
 
