@@ -83,16 +83,14 @@ func createSingleShim(def ShimDef, appCurrentDir, shimDir string, scope scoop.In
 
 	// Write the .shim file.
 	shimFilePath := filepath.Join(shimDir, def.Name+".shim")
-	shimContent := fmt.Sprintf("path = %q\n", absTarget)
+	shimContent := fmt.Sprintf("path = \"%s\"\n", absTarget)
 	if def.Args != "" {
-		// Expand Scoop variables in args (scoop compat).
-		appDir := filepath.Dir(absTarget) // .../apps/<app>/current
+		// Expand Scoop variables using the APP directory (not the resolved target).
 		expanded := def.Args
-		expanded = strings.ReplaceAll(expanded, "$dir", appDir)
-		// Derive original_dir from appDir: replace /current with /<version> if possible.
-		// Since we don't know the version here, approximate with appDir.
-		expanded = strings.ReplaceAll(expanded, "$original_dir", appDir)
-		shimContent += fmt.Sprintf("args = %s\n", expanded)
+		expanded = strings.ReplaceAll(expanded, "$dir", appCurrentDir)
+		expanded = strings.ReplaceAll(expanded, "$original_dir", appCurrentDir)
+		// Normalize to forward slashes like Scoop.
+		shimContent += fmt.Sprintf("args = %s\n", filepath.ToSlash(expanded))
 	}
 	if err := os.WriteFile(shimFilePath, []byte(shimContent), 0o644); err != nil {
 		return fmt.Errorf("failed to write .shim file: %w", err)
