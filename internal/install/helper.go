@@ -101,7 +101,7 @@ func IsArchive(path string) bool {
 	switch ext {
 	case ".zip", ".7z", ".tar", ".gz", ".bz2", ".xz", ".tgz",
 		".lzma", ".lz4", ".zst",
-		".msi", ".exe":
+		".msi":
 		return true
 	default:
 		if strings.HasSuffix(ext, ".tar") {

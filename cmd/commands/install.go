@@ -60,22 +60,6 @@ func NewInstallCommand() *cobra.Command {
 				}
 			}
 
-			_, _ = fmt.Fprintln(os.Stdout)
-			parts := []string{}
-			if installed > 0 {
-				parts = append(parts, fmt.Sprintf("%d installed", installed))
-			}
-			if skipped > 0 {
-				parts = append(parts, fmt.Sprintf("%d skipped", skipped))
-			}
-			if failed > 0 {
-				parts = append(parts, fmt.Sprintf("%d failed", failed))
-			}
-
-			if len(parts) > 0 {
-				_, _ = fmt.Fprintf(os.Stdout, "%s %s\n", ui.Success("✓"), joinInstallStrings(parts))
-			}
-
 			if failed > 0 {
 				return fmt.Errorf("%d app(s) failed to install", failed)
 			}
@@ -91,15 +75,4 @@ func NewInstallCommand() *cobra.Command {
 	cmd.Flags().StringVar(&flagProxy, "proxy", "", "Download via proxy URL")
 
 	return cmd
-}
-
-func joinInstallStrings(parts []string) string {
-	var result string
-	for i, p := range parts {
-		if i > 0 {
-			result += ", "
-		}
-		result += p
-	}
-	return result
 }

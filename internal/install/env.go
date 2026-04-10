@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 
@@ -270,4 +271,40 @@ func EnvSetVars(envSet map[string]string) map[string]string {
 		result[k] = v
 	}
 	return result
+}
+
+// ExpandEnvSetVars expands Scoop template variables in env_set values.
+// Supported placeholders include $dir, $persist_dir, $version, $global, $scoopdir.
+func ExpandEnvSetVars(envSet map[string]string, vars map[string]string) map[string]string {
+	if envSet == nil {
+		return nil
+	}
+	out := make(map[string]string, len(envSet))
+	for k, v := range envSet {
+		out[k] = expandTemplateVars(v, vars)
+	}
+	return out
+}
+
+func expandTemplateVars(value string, vars map[string]string) string {
+	if value == "" || len(vars) == 0 {
+		return value
+	}
+	expanded := value
+	keys := make([]string, 0, len(vars))
+	for k := range vars {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if len(keys[i]) == len(keys[j]) {
+			return keys[i] < keys[j]
+		}
+		return len(keys[i]) > len(keys[j])
+	})
+	for _, k := range keys {
+		v := vars[k]
+		expanded = strings.ReplaceAll(expanded, "$"+k, v)
+		expanded = strings.ReplaceAll(expanded, "${"+k+"}", v)
+	}
+	return expanded
 }

@@ -2,6 +2,7 @@ package install
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -161,4 +162,76 @@ func TestSetupHookEnvVars(t *testing.T) {
 			t.Errorf("global = %q, want %q", got["global"], "true")
 		}
 	})
+}
+
+func TestBuildHookPrelude(t *testing.T) {
+	prelude := buildHookPrelude(map[string]string{
+		"dir":    `C:\scoop\apps\git\current`,
+		"app":    "git",
+		"global": "true",
+		"quote":  "it's",
+	})
+
+	wantSnippets := []string{
+		"$env:dir = 'C:\\scoop\\apps\\git\\current'",
+		"Set-Variable -Name 'dir' -Value 'C:\\scoop\\apps\\git\\current'",
+		"$env:app = 'git'",
+		"Set-Variable -Name 'app' -Value 'git'",
+		"$env:global = 'true'",
+		"Set-Variable -Name 'global' -Value 'true'",
+		"$env:quote = 'it''s'",
+		"Set-Variable -Name 'quote' -Value 'it''s'",
+	}
+
+	for _, snippet := range wantSnippets {
+		if !strings.Contains(prelude, snippet) {
+			t.Fatalf("buildHookPrelude() missing snippet: %q\nprelude:\n%s", snippet, prelude)
+		}
+	}
+}
+
+func TestExpandEnvSetVars(t *testing.T) {
+	input := map[string]string{
+		"APP_HOME": "$dir",
+		"DATA_DIR": "$persist_dir\\data",
+		"MIXED":    "${scoopdir}\\apps\\$app\\$version",
+		"STATIC":   "hello",
+	}
+	vars := map[string]string{
+		"dir":         `C:\scoop\apps\myapp\current`,
+		"persist_dir": `C:\scoop\persist\myapp`,
+		"scoopdir":    `C:\scoop`,
+		"app":         "myapp",
+		"version":     "1.2.3",
+	}
+
+	got := ExpandEnvSetVars(input, vars)
+
+	if got["APP_HOME"] != `C:\scoop\apps\myapp\current` {
+		t.Fatalf("APP_HOME = %q", got["APP_HOME"])
+	}
+	if got["DATA_DIR"] != `C:\scoop\persist\myapp\data` {
+		t.Fatalf("DATA_DIR = %q", got["DATA_DIR"])
+	}
+	if got["MIXED"] != `C:\scoop\apps\myapp\1.2.3` {
+		t.Fatalf("MIXED = %q", got["MIXED"])
+	}
+	if got["STATIC"] != "hello" {
+		t.Fatalf("STATIC = %q", got["STATIC"])
+	}
+}
+
+func TestExpandEnvSetVarsPrefixCollision(t *testing.T) {
+	input := map[string]string{
+		"ARCH_TEXT": "$architecture",
+	}
+	vars := map[string]string{
+		"arch":         "64bit",
+		"architecture": "x64",
+	}
+
+	got := ExpandEnvSetVars(input, vars)
+	if got["ARCH_TEXT"] != "x64" {
+		t.Fatalf("ARCH_TEXT = %q, want %q", got["ARCH_TEXT"], "x64")
+	}
 }

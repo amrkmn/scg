@@ -34,7 +34,7 @@ func TestIsArchive(t *testing.T) {
 		{"file.7z", true},
 		{"file.tar.gz", true},
 		{"file.msi", true},
-		{"file.exe", true},
+		{"file.exe", false},
 		{"file.txt", false},
 		{"file.json", false},
 		{"file.go", false},

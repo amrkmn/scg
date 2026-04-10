@@ -21,6 +21,7 @@ go build -ldflags "-X main.Version=0.1.0 -s -w" -o dist/scg.exe ./cmd
 
 | Command | Description |
 |---|---|
+| `scg install <app...>` | Install apps |
 | `scg list` | List installed apps |
 | `scg search <query>` | Search for apps across all buckets |
 | `scg info <app>` | Show information about an app |
@@ -29,8 +30,18 @@ go build -ldflags "-X main.Version=0.1.0 -s -w" -o dist/scg.exe ./cmd
 | `scg which <app>` | Show the path to an executable managed by Scoop |
 | `scg cleanup` | Remove old versions of installed apps |
 | `scg config` | Get, set, or delete configuration values |
+| `scg cat <app>` | Show the manifest for an app |
 | `scg version` | Show the scg version |
 | `scg completion` | Generate PowerShell autocompletion script |
+
+### Install
+
+```powershell
+scg install <app>
+scg install <app> --global       # Install globally
+scg install <app> --skip         # Skip hash validation
+scg install <app> --no-cache     # Don't use download cache
+```
 
 ### Bucket management
 
@@ -65,56 +76,15 @@ Add-Content $PROFILE "`nInvoke-Expression (scg completion | Out-String)"
 
 ## Development
 
-### Building from Source
+Requires [just](https://github.com/casey/just).
 
 ```powershell
-# Install dependencies
-go mod download
-
-# Build
-go build -ldflags "-X main.Version=dev -s -w" -o dist/scg.exe ./cmd
-
-# Run tests
-go test ./...
+just build          # Build scg binary
+just test           # Run tests
+just lint           # Run linter
+just check          # fmt + lint + test
+just build-all      # Build for all architectures
 ```
-
-Or use [just](https://github.com/casey/just):
-
-```powershell
-just build      # Build binary
-just test       # Run tests
-just build-all  # Build for all architectures
-```
-
-### Downloading Pre-built Binaries
-
-Pre-built binaries are available on the [Releases](https://github.com/amrkmn/scg/releases) page:
-
-- **Stable releases**: Tagged versions (v1.0.0, v1.1.0, etc.)
-- **Nightly builds**: Latest development builds from `main` branch
-
-## Versioning
-
-This project follows [Semantic Versioning](https://semver.org/):
-
-- **MAJOR**: Breaking changes
-- **MINOR**: New features
-- **PATCH**: Bug fixes
-
-See [VERSIONING.md](VERSIONING.md) for detailed release strategy.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-Please ensure:
-- All tests pass (`go test ./...`)
-- Code is formatted (`go fmt ./...`)
-- Add tests for new features
 
 ## License
 

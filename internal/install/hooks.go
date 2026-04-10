@@ -1,9 +1,11 @@
 package install
 
 import (
-	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 )
@@ -21,17 +23,12 @@ func RunHook(hookType, script, appDir string, envVars map[string]string) error {
 		return fmt.Errorf("no PowerShell found (tried pwsh.exe and powershell.exe)")
 	}
 
-	// Build environment variables.
-	envLines := make([]string, 0, len(envVars))
-	for k, v := range envVars {
-		envLines = append(envLines, fmt.Sprintf("$env:%s = '%s'", k, escapePS(v)))
-	}
-	envBlock := strings.Join(envLines, "\n")
+	prelude := buildHookPrelude(envVars)
 
 	// Construct the full script.
 	var fullScript strings.Builder
-	if envBlock != "" {
-		fullScript.WriteString(envBlock + "\n")
+	if prelude != "" {
+		fullScript.WriteString(prelude + "\n")
 	}
 	fullScript.WriteString(script)
 
@@ -44,20 +41,20 @@ func RunHook(hookType, script, appDir string, envVars map[string]string) error {
 	cmd.Dir = appDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	// Use inherited console streams so child processes (e.g. python installers)
+	// detect an interactive terminal and flush output progressively.
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s hook failed: %w\nstdout: %s\nstderr: %s",
-			hookType, err, stdout.String(), stderr.String())
+		return fmt.Errorf("%s hook failed: %w", hookType, err)
 	}
 
 	return nil
 }
 
-// RunInstallerHook executes an installer or uninstaller script from the manifest.
-// The installer field can be a string or a map with "script" key.
+// RunInstallerHook executes an installer or uninstaller from the manifest.
+// Supported forms: script string/array, or object with script/file (+args).
 func RunInstallerHook(hookType string, installer any, appDir string, envVars map[string]string) error {
 	var script string
 
@@ -76,16 +73,135 @@ func RunInstallerHook(hookType string, installer any, appDir string, envVars map
 		if s, ok := v["script"]; ok {
 			return RunInstallerHook(hookType, s, appDir, envVars)
 		}
+		fileName, ok := v["file"].(string)
+		if !ok || strings.TrimSpace(fileName) == "" {
+			return fmt.Errorf("unsupported %s definition: expected script or file", hookType)
+		}
+		args, err := installerArgs(v["args"], envVars)
+		if err != nil {
+			return fmt.Errorf("invalid %s args: %w", hookType, err)
+		}
+		return runInstallerFile(hookType, appDir, fileName, args, envVars)
 	default:
-		return nil
+		return fmt.Errorf("unsupported %s definition type %T", hookType, installer)
 	}
 
 	return RunHook(hookType, script, appDir, envVars)
 }
 
+func runInstallerFile(hookType, appDir, fileName string, args []string, envVars map[string]string) error {
+	installerPath := filepath.Join(appDir, filepath.FromSlash(fileName))
+	if _, err := os.Stat(installerPath); err != nil {
+		return fmt.Errorf("%s file not found: %s", hookType, installerPath)
+	}
+
+	var cmd *exec.Cmd
+	if strings.EqualFold(filepath.Ext(installerPath), ".ps1") {
+		psPath := FindPowerShell()
+		if psPath == "" {
+			return fmt.Errorf("no PowerShell found (tried pwsh.exe and powershell.exe)")
+		}
+		psArgs := append([]string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installerPath}, args...)
+		cmd = exec.Command(psPath, psArgs...)
+	} else {
+		cmd = exec.Command(installerPath, args...)
+	}
+
+	cmd.Dir = appDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if len(envVars) > 0 {
+		cmd.Env = os.Environ()
+		for k, v := range envVars {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
+	}
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s hook failed: %w", hookType, err)
+	}
+	return nil
+}
+
+func installerArgs(raw any, vars map[string]string) ([]string, error) {
+	switch v := raw.(type) {
+	case nil:
+		return nil, nil
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return nil, nil
+		}
+		return splitArgs(expandTemplateVars(v, vars)), nil
+	case []string:
+		out := make([]string, 0, len(v))
+		for _, s := range v {
+			out = append(out, expandTemplateVars(s, vars))
+		}
+		return out, nil
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			s, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("argument %v is not a string", item)
+			}
+			out = append(out, expandTemplateVars(s, vars))
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("unsupported args type %T", raw)
+	}
+}
+
+func splitArgs(input string) []string {
+	var args []string
+	var current strings.Builder
+	inQuotes := false
+
+	for _, r := range input {
+		switch {
+		case r == '"':
+			inQuotes = !inQuotes
+		case (r == ' ' || r == '\t') && !inQuotes:
+			if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteRune(r)
+		}
+	}
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+	return args
+}
+
 // escapePS escapes a string for use in a single-quoted PowerShell string.
 func escapePS(s string) string {
 	return strings.ReplaceAll(s, "'", "''")
+}
+
+func buildHookPrelude(envVars map[string]string) string {
+	if len(envVars) == 0 {
+		return ""
+	}
+
+	keys := make([]string, 0, len(envVars))
+	for k := range envVars {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	lines := make([]string, 0, len(keys)*2)
+	for _, k := range keys {
+		v := escapePS(envVars[k])
+		lines = append(lines, fmt.Sprintf("$env:%s = '%s'", k, v))
+		// Scoop hooks rely on regular PowerShell variables like $dir, not only $env:dir.
+		lines = append(lines, fmt.Sprintf("Set-Variable -Name '%s' -Value '%s'", escapePS(k), v))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // SetupHookEnvVars creates the standard environment variables for install hooks.

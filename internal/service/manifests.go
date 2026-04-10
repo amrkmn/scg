@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
+	"go.noz.one/scg/internal/known"
 	"go.noz.one/scg/internal/scoop"
 )
 
@@ -113,18 +115,47 @@ func (s *ManifestService) FindAllManifests(input string) []FoundManifest {
 func (s *ManifestService) FindManifestPair(input string) (installed, bucket *FoundManifest) {
 	requestedBucket, _ := parseBucketAndApp(input)
 	all := s.FindAllManifests(input)
+	bucketCandidates := make([]*FoundManifest, 0)
 	for i := range all {
 		fm := &all[i]
 		if fm.Source == "installed" && installed == nil {
 			installed = fm
-		} else if fm.Source == "bucket" && bucket == nil {
+		} else if fm.Source == "bucket" {
 			// If a specific bucket was requested, only accept that one.
 			if requestedBucket == "" || strings.EqualFold(fm.Bucket, requestedBucket) {
-				bucket = fm
+				bucketCandidates = append(bucketCandidates, fm)
 			}
 		}
 	}
+	if len(bucketCandidates) > 0 {
+		sort.Slice(bucketCandidates, func(i, j int) bool {
+			a, b := bucketCandidates[i], bucketCandidates[j]
+			ra, rb := bucketRank(a.Bucket), bucketRank(b.Bucket)
+			if ra != rb {
+				return ra < rb
+			}
+			if !strings.EqualFold(a.Bucket, b.Bucket) {
+				return strings.ToLower(a.Bucket) < strings.ToLower(b.Bucket)
+			}
+			// Prefer user scope when both contain same bucket name.
+			if a.Scope != b.Scope {
+				return a.Scope == scoop.ScopeUser
+			}
+			return false
+		})
+		bucket = bucketCandidates[0]
+	}
 	return
+}
+
+func bucketRank(name string) int {
+	knownOrder := known.GetAllKnownBuckets()
+	for i, b := range knownOrder {
+		if strings.EqualFold(b.Name, name) {
+			return i
+		}
+	}
+	return len(knownOrder) + 100
 }
 
 // ReadManifestFields extracts InfoFields from a single FoundManifest.

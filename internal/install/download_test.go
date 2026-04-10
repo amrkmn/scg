@@ -27,6 +27,36 @@ func TestCachePath(t *testing.T) {
 			t.Errorf("CachePath should lowercase app name: %s", got)
 		}
 	})
+
+	t.Run("scoop rename fragment uses target extension", func(t *testing.T) {
+		got := dm.CachePath("docker-compose", "5.1.2", "https://example.com/download?id=1#/docker-compose.exe")
+		if !strings.HasSuffix(strings.ToLower(got), ".exe") {
+			t.Errorf("CachePath extension = %s, want .exe", got)
+		}
+	})
+}
+
+func TestDownloadFileName(t *testing.T) {
+	t.Run("uses scoop rename fragment", func(t *testing.T) {
+		got := DownloadFileName("docker-compose", "https://example.com/file.bin#/docker-compose.exe")
+		if got != "docker-compose.exe" {
+			t.Fatalf("DownloadFileName rename = %q, want %q", got, "docker-compose.exe")
+		}
+	})
+
+	t.Run("falls back to url path base", func(t *testing.T) {
+		got := DownloadFileName("git", "https://example.com/PortableGit.7z")
+		if got != "PortableGit.7z" {
+			t.Fatalf("DownloadFileName base = %q, want %q", got, "PortableGit.7z")
+		}
+	})
+
+	t.Run("falls back to app name when no filename", func(t *testing.T) {
+		got := DownloadFileName("python", "https://example.com/")
+		if got != "python" {
+			t.Fatalf("DownloadFileName fallback = %q, want %q", got, "python")
+		}
+	})
 }
 
 func TestCacheHash(t *testing.T) {
@@ -51,4 +81,57 @@ func TestCacheHash(t *testing.T) {
 			t.Errorf("cacheHash length = %d, want 8", len(h1))
 		}
 	})
+}
+
+func TestBoolFromConfig(t *testing.T) {
+	cases := []struct {
+		name string
+		in   any
+		def  bool
+		want bool
+	}{
+		{name: "bool true", in: true, def: false, want: true},
+		{name: "bool false", in: false, def: true, want: false},
+		{name: "string true", in: "true", def: false, want: true},
+		{name: "string false", in: "false", def: true, want: false},
+		{name: "number zero", in: float64(0), def: true, want: false},
+		{name: "number non-zero", in: float64(1), def: false, want: true},
+		{name: "invalid string", in: "nope", def: true, want: true},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got := boolFromConfig(tc.in, tc.def)
+			if got != tc.want {
+				t.Fatalf("boolFromConfig(%v, %v) = %v, want %v", tc.in, tc.def, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFormatAria2Summary(t *testing.T) {
+	raw := strings.Join([]string{
+		"04/10 20:28:21 [NOTICE] Downloading 1 item(s)",
+		"[#dc76b5 2.7MiB/2.8MiB(94%) CN:1 DL:1.1MiB]",
+		"",
+		"Download Results:",
+		"gid   |stat|avg speed  |path/URI",
+		"======+====+===========+=======================================================",
+		"dc76b5|OK  |   1.2MiB/s|C:/Users/User/scoop/cache/x265#4.1+239-8be7dbf#20cf57df.7z",
+		"",
+		"Status Legend:",
+		"(OK):download completed.",
+	}, "\n")
+
+	got := formatAria2Summary(raw)
+	if len(got) != 6 {
+		t.Fatalf("formatAria2Summary length = %d, want 6; got=%v", len(got), got)
+	}
+	if got[0] != "Download Results:" {
+		t.Fatalf("first summary line = %q, want %q", got[0], "Download Results:")
+	}
+	if got[4] != "Status Legend:" {
+		t.Fatalf("status line = %q, want %q", got[4], "Status Legend:")
+	}
 }

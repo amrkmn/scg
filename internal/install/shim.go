@@ -30,11 +30,80 @@ func CreateShims(shims []ShimDef, appCurrentDir string, scope scoop.InstallScope
 	paths := scoop.ResolvePaths(scope)
 
 	for _, def := range shims {
-		if err := createSingleShim(def, appCurrentDir, paths.Shims, scope); err != nil {
+		if err := createSingleShim(def, appCurrentDir, paths.Shims); err != nil {
 			return fmt.Errorf("failed to create shim for %q: %w", def.Name, err)
 		}
 	}
 	return nil
+}
+
+// DetectShimOverwrites returns warning messages for shims that will overwrite an existing shim.
+func DetectShimOverwrites(shims []ShimDef, appCurrentDir string, scope scoop.InstallScope) []string {
+	paths := scoop.ResolvePaths(scope)
+	warnings := make([]string, 0)
+	seen := make(map[string]string)
+
+	for _, def := range shims {
+		absTarget, err := resolveTarget(def.Target, appCurrentDir)
+		if err != nil {
+			continue
+		}
+
+		key := strings.ToLower(def.Name)
+		if prior, ok := seen[key]; ok && !samePath(prior, absTarget) {
+			warnings = append(warnings, fmt.Sprintf("Overwriting duplicate shim in manifest ('%s.exe' -> '%s')", def.Name, filepath.Base(def.Target)))
+		}
+		seen[key] = absTarget
+
+		existing := filepath.Join(paths.Shims, def.Name+".shim")
+		existingTarget, ok := readShimPath(existing)
+		if !ok || samePath(existingTarget, absTarget) {
+			continue
+		}
+
+		oldApp := appFromTargetPath(existingTarget)
+		msg := fmt.Sprintf("Overwriting shim ('%s.exe' -> '%s')", def.Name, filepath.Base(def.Target))
+		if oldApp != "" {
+			msg += fmt.Sprintf(" installed from %s", oldApp)
+		}
+		warnings = append(warnings, msg)
+	}
+
+	return warnings
+}
+
+func readShimPath(shimFilePath string) (string, bool) {
+	data, err := os.ReadFile(shimFilePath)
+	if err != nil {
+		return "", false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(strings.ToLower(line), "path = ") {
+			continue
+		}
+		value := strings.TrimSpace(line[len("path = "):])
+		value = strings.Trim(value, "\"")
+		if value == "" {
+			return "", false
+		}
+		return value, true
+	}
+	return "", false
+}
+
+func appFromTargetPath(target string) string {
+	parts := strings.Split(filepath.Clean(target), string(filepath.Separator))
+	for i := 0; i+2 < len(parts); i++ {
+		if strings.EqualFold(parts[i], "apps") {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
+func samePath(a, b string) bool {
+	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
 }
 
 // resolveTarget resolves a shim target to an absolute path using Scoop's resolution order:
@@ -65,7 +134,7 @@ func resolveTarget(target, appCurrentDir string) (string, error) {
 }
 
 // createSingleShim creates a single shim pair (.shim file + .exe copy).
-func createSingleShim(def ShimDef, appCurrentDir, shimDir string, scope scoop.InstallScope) error {
+func createSingleShim(def ShimDef, appCurrentDir, shimDir string) error {
 	// Resolve the target to an absolute path.
 	// Scoop resolution order:
 	// 1. "$dir\$target" (relative to app directory)
@@ -98,7 +167,7 @@ func createSingleShim(def ShimDef, appCurrentDir, shimDir string, scope scoop.In
 
 	// Write the shim executable.
 	shimExePath := filepath.Join(shimDir, def.Name+".exe")
-	if err := writeShimExe(shimExePath, scope); err != nil {
+	if err := writeShimExe(shimExePath); err != nil {
 		return fmt.Errorf("failed to write shim exe: %w", err)
 	}
 
@@ -130,9 +199,9 @@ func RemoveShims(shims []ShimDef, scope scoop.InstallScope) error {
 // writeShimExe copies the shim executable to the target path.
 // It first tries to use scoop's own shim.exe (for compatibility),
 // then falls back to our embedded Zig-built shim.
-func writeShimExe(destPath string, scope scoop.InstallScope) error {
+func writeShimExe(destPath string) error {
 	// Try scoop's shim first (for compatibility with existing installations).
-	scoopShimPath := findScoopShim(scope)
+	scoopShimPath := findScoopShim()
 	if scoopShimPath != "" {
 		return copyFile(scoopShimPath, destPath)
 	}
@@ -146,7 +215,7 @@ func writeShimExe(destPath string, scope scoop.InstallScope) error {
 }
 
 // findScoopShim tries to locate scoop's kiennq shim.exe in the scoop installation.
-func findScoopShim(scope scoop.InstallScope) string {
+func findScoopShim() string {
 	// Check both scopes for scoop's shim.
 	for _, s := range scoop.BothScopes() {
 		candidate := filepath.Join(s.Apps, "scoop", "current", "supporting", "shims", "kiennq", "shim.exe")
