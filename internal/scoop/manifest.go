@@ -15,8 +15,8 @@ type Manifest struct {
 	Description  string            `json:"description"`
 	Homepage     string            `json:"homepage"`
 	License      any               `json:"license"`      // string or {"identifier":..., "url":...}
-	URL         any               `json:"url"`          // string or []string
-	Hash        any               `json:"hash"`         // string or []string
+	URL          any               `json:"url"`          // string or []string
+	Hash         any               `json:"hash"`         // string or []string
 	Bin          any               `json:"bin"`          // string | []any | map[string]string
 	Depends      any               `json:"depends"`      // string | []string
 	Deprecated   any               `json:"deprecated"`   // bool or string (replacement app name)
@@ -24,11 +24,13 @@ type Manifest struct {
 	EnvAddPath   any               `json:"env_add_path"` // string | []string
 	EnvSet       map[string]string `json:"env_set"`
 	Shortcuts    []any             `json:"shortcuts"` // each: [target, name, args?, icon?]
-	Persist      any               `json:"persist"`   // string | []any
-	Notes        any               `json:"notes"`     // string | []string
+	ExtractDir   string            `json:"extract_dir"`
+	ExtractTo    string            `json:"extract_to"`
+	Persist      any               `json:"persist"` // string | []any
+	Notes        any               `json:"notes"`   // string | []string
 	Suggest      map[string]any    `json:"suggest"`
-	Installer   any               `json:"installer"`  // map with script property
-	Uninstaller any               `json:"uninstaller"`
+	Installer    any               `json:"installer"` // map with script property
+	Uninstaller  any               `json:"uninstaller"`
 	PreInstall   any               `json:"pre_install"`  // string or []string
 	PostInstall  any               `json:"post_install"` // string or []string
 	Comments     any               `json:"##"`

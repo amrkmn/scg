@@ -220,6 +220,23 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 		return result
 	}
 
+	// Handle extract_to: move extracted contents into a subdirectory.
+	if et := getArchString(m, "extract_to", arch); et != "" {
+		targetDir := filepath.Join(versionDir, et)
+		if err := install.MoveContents(versionDir, targetDir); err != nil {
+			result.Error = fmt.Errorf("extract_to failed: %w", err)
+			return result
+		}
+	}
+
+	// Flatten extract_dir if specified.
+	if ed := getArchString(m, "extract_dir", arch); ed != "" {
+		if err := install.FlattenExtractDir(versionDir, ed); err != nil {
+			result.Error = fmt.Errorf("extract_dir failed: %w", err)
+			return result
+		}
+	}
+
 	// Run pre_install hook.
 	if preInstall != "" {
 		log("  Running pre_install hook...")
@@ -443,6 +460,10 @@ func getArchString(m *scoop.Manifest, field, arch string) string {
 		if m.PostInstall != nil {
 			return joinAnyString(m.PostInstall)
 		}
+	case "extract_dir":
+		return m.ExtractDir
+	case "extract_to":
+		return m.ExtractTo
 	}
 	return ""
 }

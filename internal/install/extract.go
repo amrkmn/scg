@@ -266,3 +266,57 @@ func extractZipFile(f *zip.File, targetPath string) error {
 	_, err = io.Copy(w, rc)
 	return err
 }
+
+// FlattenExtractDir moves the contents of a subdirectory (extract_dir) to the parent directory.
+// This matches Scoop's extract_dir behavior: extract the archive, then flatten the subdirectory.
+func FlattenExtractDir(destDir, extractDir string) error {
+	srcDir := filepath.Join(destDir, extractDir)
+	fi, err := os.Stat(srcDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("extract_dir %q not found in %s", extractDir, destDir)
+		}
+		return fmt.Errorf("failed to stat extract_dir: %w", err)
+	}
+	_ = fi
+
+	// Move all entries from srcDir to destDir.
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return fmt.Errorf("failed to read extract_dir: %w", err)
+	}
+
+	for _, entry := range entries {
+		src := filepath.Join(srcDir, entry.Name())
+		dst := filepath.Join(destDir, entry.Name())
+		if err := os.Rename(src, dst); err != nil {
+			return fmt.Errorf("failed to move %s: %w", entry.Name(), err)
+		}
+	}
+
+	// Remove the now-empty extract_dir.
+	return os.Remove(srcDir)
+}
+
+// MoveContents moves all files and directories from srcDir into dstDir (creates if needed).
+// Used for extract_to: move already-extracted contents into a subdirectory.
+func MoveContents(srcDir, dstDir string) error {
+	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create target directory: %w", err)
+	}
+
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return fmt.Errorf("failed to read source directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		src := filepath.Join(srcDir, entry.Name())
+		dst := filepath.Join(dstDir, entry.Name())
+		if err := os.Rename(src, dst); err != nil {
+			return fmt.Errorf("failed to move %s: %w", entry.Name(), err)
+		}
+	}
+
+	return nil
+}

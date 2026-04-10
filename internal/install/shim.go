@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -36,13 +37,43 @@ func CreateShims(shims []ShimDef, appCurrentDir string, scope scoop.InstallScope
 	return nil
 }
 
+// resolveTarget resolves a shim target to an absolute path using Scoop's resolution order:
+// 1. Relative to app directory ($dir\$target)
+// 2. Absolute path (as-is)
+// 3. PATH resolution (Get-Command equivalent)
+func resolveTarget(target, appCurrentDir string) (string, error) {
+	// 1. Try relative to app directory.
+	rel := filepath.Join(appCurrentDir, target)
+	if fi, err := os.Stat(rel); err == nil && !fi.IsDir() {
+		return filepath.Abs(rel)
+	}
+
+	// 2. Try as absolute path.
+	if filepath.IsAbs(target) {
+		if fi, err := os.Stat(target); err == nil && !fi.IsDir() {
+			return target, nil
+		}
+	}
+
+	// 3. PATH resolution (exec.LookPath).
+	if found, err := exec.LookPath(target); err == nil {
+		return filepath.Abs(found)
+	}
+
+	// Fall back to relative path (may not exist, but preserves original behavior).
+	return filepath.Abs(rel)
+}
+
 // createSingleShim creates a single shim pair (.shim file + .exe copy).
 func createSingleShim(def ShimDef, appCurrentDir, shimDir string, scope scoop.InstallScope) error {
-	// Resolve the target path to an absolute path.
-	targetPath := filepath.Join(appCurrentDir, def.Target)
-	absTarget, err := filepath.Abs(targetPath)
+	// Resolve the target to an absolute path.
+	// Scoop resolution order:
+	// 1. "$dir\$target" (relative to app directory)
+	// 2. "$target" (absolute path)
+	// 3. Get-Command $target (PATH resolution)
+	absTarget, err := resolveTarget(def.Target, appCurrentDir)
 	if err != nil {
-		return fmt.Errorf("failed to resolve target path %q: %w", targetPath, err)
+		return fmt.Errorf("failed to resolve target %q: %w", def.Target, err)
 	}
 
 	// Ensure the shim directory exists.
