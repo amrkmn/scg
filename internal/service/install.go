@@ -149,7 +149,6 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	postInstall := getArchString(m, "post_install", arch)
 
 	currentDir := versionDir
-	hookEnv := install.SetupHookEnvVars(currentDir, m.Version, arch, opts.Scope == scoop.ScopeGlobal)
 	log := s.ctx.GetLogger().Log
 
 	// Resolve download URL.
@@ -173,6 +172,21 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	} else {
 		s.ctx.GetLogger().Log(fmt.Sprintf("  Using cached %s", dlResult.CachePath))
 	}
+
+	// Build hook environment variables (after download so $fname is available).
+	persistDir := filepath.Join(paths.Root, "persist", appInput)
+	downloadFile := filepath.Base(dlResult.CachePath)
+	hookEnv := install.SetupHookEnvVars(
+		currentDir,   // dir (current junction)
+		versionDir,   // original_dir (version-specific)
+		m.Version,    // version
+		arch,         // architecture
+		appInput,     // app
+		persistDir,   // persist_dir
+		paths.Root,   // scoopdir
+		downloadFile, // fname
+		opts.Scope == scoop.ScopeGlobal,
+	)
 
 	// Verify hash (unless --skip).
 	if !opts.SkipHash {

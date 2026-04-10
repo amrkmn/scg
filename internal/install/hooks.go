@@ -89,14 +89,35 @@ func escapePS(s string) string {
 }
 
 // SetupHookEnvVars creates the standard environment variables for install hooks.
-func SetupHookEnvVars(dir, version, architecture string, isGlobal bool) map[string]string {
+// This matches Scoop's variable set for pre_install/post_install scripts.
+func SetupHookEnvVars(dir, originalDir, version, architecture, appName, persistDir, scoopDir, downloadFile string, isGlobal bool) map[string]string {
 	env := map[string]string{
-		"dir":     dir,
-		"version": version,
-		"arch":    architecture,
+		// Core variables
+		"dir":          dir,
+		"original_dir": originalDir,
+		"version":      version,
+		"architecture": architecture,
+		"arch":         architecture, // legacy alias
+		"app":          appName,
+
+		// Paths
+		"persist_dir": persistDir,
+		"scoopdir":    scoopDir,
+		"cachedir":    joinPath(scoopDir, "cache"),
+		"bucketsdir":  joinPath(scoopDir, "buckets"),
+
+		// Download
+		"fname": downloadFile,
 	}
 	if isGlobal {
 		env["global"] = "true"
 	}
 	return env
+}
+
+func joinPath(base, sub string) string {
+	if base == "" {
+		return ""
+	}
+	return base + string('\\') + sub
 }

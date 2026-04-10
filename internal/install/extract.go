@@ -120,6 +120,56 @@ func (e *Extractor) extract7zip(archivePath, destDir string) error {
 	if err != nil {
 		return fmt.Errorf("7zip extraction failed: %w\n%s", err, out)
 	}
+
+	// Handle double-layer archives (.tgz, .tar.gz, .tar.bz2, .tar.xz).
+	// 7z extracts .tgz → .tar but does not auto-extract the inner .tar.
+	ext := ExtractExtension(archivePath)
+	if isTarWrapper(ext) {
+		if err := extractInnerTar(sevenZipPath, destDir); err != nil {
+			return fmt.Errorf("inner tar extraction failed: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// isTarWrapper returns true if the extension indicates a compressed tar archive
+// that 7z will decompress to a .tar file. Matches Scoop's pattern: .t[abgpx]z2?
+func isTarWrapper(ext string) bool {
+	switch ext {
+	case ".tgz", ".tbz", ".tbz2", ".txz", ".tpz", ".taz",
+		".tar.gz", ".tar.bz2", ".tar.xz", ".gz", ".bz2":
+		return true
+	default:
+		return false
+	}
+}
+
+// extractInnerTar finds and extracts any .tar files left in destDir after
+// a .tgz/.tar.gz extraction, then cleans up the .tar files.
+func extractInnerTar(sevenZipPath, destDir string) error {
+	entries, err := os.ReadDir(destDir)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".tar") {
+			continue
+		}
+
+		tarPath := filepath.Join(destDir, entry.Name())
+		cmd := exec.Command(sevenZipPath, "x", tarPath, fmt.Sprintf("-o%s", destDir), "-aoa", "-y")
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("failed to extract %s: %w\n%s", entry.Name(), err, out)
+		}
+
+		// Clean up the intermediate .tar file.
+		_ = os.Remove(tarPath)
+	}
+
 	return nil
 }
 

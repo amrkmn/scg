@@ -125,15 +125,24 @@ func TestEscapePS(t *testing.T) {
 
 func TestSetupHookEnvVars(t *testing.T) {
 	t.Run("user scope", func(t *testing.T) {
-		got := SetupHookEnvVars(`C:\scoop\apps\git\current`, "2.43.0", "64bit", false)
+		got := SetupHookEnvVars(
+			`C:\scoop\apps\git\current`,
+			`C:\scoop\apps\git\2.43.0`,
+			"2.43.0", "64bit", "git",
+			`C:\scoop\persist\git`,
+			`C:\scoop`, "", false,
+		)
 		if got["dir"] != `C:\scoop\apps\git\current` {
 			t.Errorf("dir = %q, want %q", got["dir"], `C:\scoop\apps\git\current`)
 		}
 		if got["version"] != "2.43.0" {
 			t.Errorf("version = %q, want %q", got["version"], "2.43.0")
 		}
-		if got["arch"] != "64bit" {
-			t.Errorf("arch = %q, want %q", got["arch"], "64bit")
+		if got["architecture"] != "64bit" {
+			t.Errorf("architecture = %q, want %q", got["architecture"], "64bit")
+		}
+		if got["app"] != "git" {
+			t.Errorf("app = %q, want %q", got["app"], "git")
 		}
 		if _, ok := got["global"]; ok {
 			t.Error("global should not be set for user scope")
@@ -141,7 +150,13 @@ func TestSetupHookEnvVars(t *testing.T) {
 	})
 
 	t.Run("global scope", func(t *testing.T) {
-		got := SetupHookEnvVars(`C:\ProgramData\scoop\apps\git\current`, "2.43.0", "64bit", true)
+		got := SetupHookEnvVars(
+			`C:\ProgramData\scoop\apps\git\current`,
+			`C:\ProgramData\scoop\apps\git\2.43.0`,
+			"2.43.0", "64bit", "git",
+			`C:\ProgramData\scoop\persist\git`,
+			`C:\ProgramData\scoop`, "", true,
+		)
 		if got["global"] != "true" {
 			t.Errorf("global = %q, want %q", got["global"], "true")
 		}
