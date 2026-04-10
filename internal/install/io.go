@@ -6,11 +6,9 @@ import (
 )
 
 // InstallInfo represents the install.json file stored in each app's version directory.
-// This is a separate type from scoop.InstallInfo to keep the install package
-// self-contained with write support.
+// Scoop's install.json only contains architecture and bucket.
 type InstallInfo struct {
 	Architecture string `json:"architecture"`
-	URL          string `json:"url"`
 	Bucket       string `json:"bucket"`
 }
 

@@ -301,7 +301,6 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	log("  Saving metadata...")
 	info := &install.InstallInfo{
 		Architecture: arch,
-		URL:          dlURL,
 		Bucket:       bucketName,
 	}
 	if err := install.WriteInstallInfo(filepath.Join(versionDir, "install.json"), info); err != nil {

@@ -11,7 +11,6 @@ func TestWriteInstallInfo(t *testing.T) {
 	tmpDir := t.TempDir()
 	info := &InstallInfo{
 		Architecture: "64bit",
-		URL:          "https://example.com/app.json",
 		Bucket:       "main",
 	}
 
@@ -32,9 +31,6 @@ func TestWriteInstallInfo(t *testing.T) {
 
 	if read.Architecture != "64bit" {
 		t.Errorf("Architecture = %q, want %q", read.Architecture, "64bit")
-	}
-	if read.URL != "https://example.com/app.json" {
-		t.Errorf("URL = %q, want %q", read.URL, "https://example.com/app.json")
 	}
 	if read.Bucket != "main" {
 		t.Errorf("Bucket = %q, want %q", read.Bucket, "main")
