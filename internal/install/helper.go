@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"go.noz.one/scg/internal/scoop"
 )
@@ -61,14 +62,22 @@ func FindInnounp() (string, error) {
 
 // FindPowerShell returns the path to pwsh.exe (PowerShell Core) if available,
 // falling back to powershell.exe (Windows PowerShell).
+var (
+	cachedPwsh     string
+	cachedPwshOnce sync.Once
+)
+
 func FindPowerShell() string {
-	if p, err := exec.LookPath("pwsh.exe"); err == nil {
-		return p
-	}
-	if p, err := exec.LookPath("powershell.exe"); err == nil {
-		return p
-	}
-	return ""
+	cachedPwshOnce.Do(func() {
+		if p, err := exec.LookPath("pwsh.exe"); err == nil {
+			cachedPwsh = p
+			return
+		}
+		if p, err := exec.LookPath("powershell.exe"); err == nil {
+			cachedPwsh = p
+		}
+	})
+	return cachedPwsh
 }
 
 // HelperAvailable is a convenience function that returns true if the named helper can be found.
@@ -88,6 +97,18 @@ func EnsureScoopInstalled() error {
 		return fmt.Errorf("scoop installation not found; please install scoop first: https://scoop.sh")
 	}
 	return nil
+}
+
+// shellQuote wraps a path in quotes if it contains spaces.
+func shellQuote(path string) string {
+	if containsSpace(path) {
+		return `"` + path + `"`
+	}
+	return path
+}
+
+func containsSpace(s string) bool {
+	return strings.Contains(s, " ")
 }
 
 // ExtractExtension returns the lower-cased file extension of a path.

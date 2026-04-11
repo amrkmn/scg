@@ -64,7 +64,55 @@ func (dm *DownloadManager) CachePath(app, version, downloadURL string) string {
 	}
 
 	return filepath.Join(dm.cacheDir, fmt.Sprintf("%s#%s#%s%s",
-		strings.ToLower(app), version, hash, filepath.Ext(filename)))
+		strings.ToLower(app), version, hash, cacheExtension(filename)))
+}
+
+func cacheExtension(filename string) string {
+	return filepath.Ext(filename)
+}
+
+func legacyCacheExtension(filename string) string {
+	lower := strings.ToLower(filename)
+	switch {
+	case strings.HasSuffix(lower, ".tar.gz"):
+		return ".tar.gz"
+	case strings.HasSuffix(lower, ".tar.bz2"):
+		return ".tar.bz2"
+	case strings.HasSuffix(lower, ".tar.xz"):
+		return ".tar.xz"
+	case strings.HasSuffix(lower, ".tar.zst"):
+		return ".tar.zst"
+	case strings.HasSuffix(lower, ".tar.lz4"):
+		return ".tar.lz4"
+	default:
+		return filepath.Ext(filename)
+	}
+}
+
+func (dm *DownloadManager) legacyCachePath(app, version, downloadURL string) string {
+	hash := cacheHash(downloadURL)
+	filename := DownloadFileName(app, downloadURL)
+	if filename == "" || filename == "." || filename == "/" {
+		filename = app
+	}
+	return filepath.Join(dm.cacheDir, fmt.Sprintf("%s#%s#%s%s",
+		strings.ToLower(app), version, hash, legacyCacheExtension(filename)))
+}
+
+// FindCachedPath returns an existing cache path (current format, then legacy format).
+func (dm *DownloadManager) FindCachedPath(app, version, downloadURL string) (string, bool) {
+	cachePath := dm.CachePath(app, version, downloadURL)
+	if _, err := os.Stat(cachePath); err == nil {
+		return cachePath, true
+	}
+
+	legacyPath := dm.legacyCachePath(app, version, downloadURL)
+	if legacyPath != cachePath {
+		if _, err := os.Stat(legacyPath); err == nil {
+			return legacyPath, true
+		}
+	}
+	return "", false
 }
 
 // DownloadFileName resolves the effective filename for a download URL.
@@ -101,7 +149,7 @@ func DownloadFileName(app, downloadURL string) string {
 // cacheHash computes a short hash from a URL for the cache filename.
 func cacheHash(downloadURL string) string {
 	h := sha256.Sum256([]byte(downloadURL))
-	return hex.EncodeToString(h[:])[:8]
+	return hex.EncodeToString(h[:])[:7]
 }
 
 // Download downloads a file to the cache directory.
@@ -112,9 +160,13 @@ func (dm *DownloadManager) Download(app, version, downloadURL string, useCache b
 
 	// Check cache.
 	if useCache {
-		if fi, err := os.Stat(cachePath); err == nil {
+		if existingPath, ok := dm.FindCachedPath(app, version, downloadURL); ok {
+			fi, err := os.Stat(existingPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to stat cached file: %w", err)
+			}
 			return &DownloadResult{
-				CachePath:  cachePath,
+				CachePath:  existingPath,
 				Downloaded: false,
 				UsedAria2:  false,
 				Size:       fi.Size(),

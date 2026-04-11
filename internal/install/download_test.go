@@ -1,6 +1,8 @@
 package install
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -34,6 +36,45 @@ func TestCachePath(t *testing.T) {
 			t.Errorf("CachePath extension = %s, want .exe", got)
 		}
 	})
+
+	t.Run("uses final extension for tar.gz", func(t *testing.T) {
+		got := dm.CachePath("nrfutil", "8.1.1", "https://example.com/nrfutil-8.1.1.tar.gz")
+		if !strings.HasSuffix(strings.ToLower(got), ".gz") {
+			t.Errorf("CachePath extension = %s, want .gz", got)
+		}
+	})
+}
+
+func TestFindCachedPathPrefersCurrentThenLegacy(t *testing.T) {
+	cacheDir := t.TempDir()
+	dm := &DownloadManager{cacheDir: cacheDir, verbose: false}
+	url := "https://example.com/nrfutil-8.1.1.tar.gz"
+
+	legacy := dm.legacyCachePath("nrfutil", "8.1.1", url)
+	if err := os.WriteFile(legacy, []byte("legacy"), 0o644); err != nil {
+		t.Fatalf("write legacy cache: %v", err)
+	}
+
+	found, ok := dm.FindCachedPath("nrfutil", "8.1.1", url)
+	if !ok {
+		t.Fatal("FindCachedPath did not find legacy cache")
+	}
+	if found != legacy {
+		t.Fatalf("FindCachedPath = %q, want legacy %q", found, legacy)
+	}
+
+	current := dm.CachePath("nrfutil", "8.1.1", url)
+	if err := os.WriteFile(current, []byte("current"), 0o644); err != nil {
+		t.Fatalf("write current cache: %v", err)
+	}
+
+	found, ok = dm.FindCachedPath("nrfutil", "8.1.1", url)
+	if !ok {
+		t.Fatal("FindCachedPath did not find current cache")
+	}
+	if filepath.Clean(found) != filepath.Clean(current) {
+		t.Fatalf("FindCachedPath = %q, want current %q", found, current)
+	}
 }
 
 func TestDownloadFileName(t *testing.T) {
@@ -76,9 +117,9 @@ func TestCacheHash(t *testing.T) {
 		}
 	})
 
-	t.Run("8 characters", func(t *testing.T) {
-		if len(h1) != 8 {
-			t.Errorf("cacheHash length = %d, want 8", len(h1))
+	t.Run("7 characters", func(t *testing.T) {
+		if len(h1) != 7 {
+			t.Errorf("cacheHash length = %d, want 7", len(h1))
 		}
 	})
 }

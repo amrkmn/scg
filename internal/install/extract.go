@@ -154,11 +154,17 @@ func extractInnerTar(sevenZipPath, destDir string) error {
 	}
 
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".tar") {
+		if entry.IsDir() {
 			continue
 		}
 
 		tarPath := filepath.Join(destDir, entry.Name())
+		if !strings.HasSuffix(strings.ToLower(entry.Name()), ".tar") {
+			isTar, err := looksLikeTar(tarPath)
+			if err != nil || !isTar {
+				continue
+			}
+		}
 		cmd := exec.Command(sevenZipPath, "x", tarPath, fmt.Sprintf("-o%s", destDir), "-aoa", "-y")
 		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 		out, err := cmd.CombinedOutput()
@@ -171,6 +177,24 @@ func extractInnerTar(sevenZipPath, destDir string) error {
 	}
 
 	return nil
+}
+
+func looksLikeTar(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = f.Close() }()
+
+	header := make([]byte, 262)
+	n, err := io.ReadFull(f, header)
+	if err != nil && err != io.ErrUnexpectedEOF {
+		return false, err
+	}
+	if n < 262 {
+		return false, nil
+	}
+	return string(header[257:262]) == "ustar", nil
 }
 
 // extractMSI extracts an MSI file using lessmsi or msiexec.

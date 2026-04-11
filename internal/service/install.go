@@ -208,7 +208,9 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	willDownload := opts.NoCache
 	cachePath := dm.CachePath(appInput, m.Version, dlURL)
 	if !willDownload {
-		if _, err := os.Stat(cachePath); err != nil {
+		if existingPath, ok := dm.FindCachedPath(appInput, m.Version, dlURL); ok {
+			cachePath = existingPath
+		} else {
 			willDownload = true
 		}
 	}
@@ -364,9 +366,25 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 		}
 	}
 
+	// Add to PATH.
+	pathChanged := false
+	if len(envPaths) > 0 {
+		pathAdditions, err := install.AddToPathWithResultNoBroadcast(envPaths, opts.Scope)
+		if err != nil {
+			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: PATH update: %v", err))
+		} else {
+			pathChanged = len(pathAdditions) > 0
+			for _, p := range pathAdditions {
+				log(fmt.Sprintf("Adding %s to your path.", displayPath(p)))
+			}
+		}
+	}
+
 	// Setup persist data.
 	if len(persistItems) > 0 {
-		log("Set up persist directory")
+		for _, item := range persistItems {
+			log("Persisting " + item)
+		}
 		if err := install.SetupPersistData(appInput, persistItems, currentLink, opts.Scope); err != nil {
 			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: persist setup: %v", err))
 		}
@@ -382,22 +400,29 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 		}
 	}
 
-	// Add to PATH.
-	if len(envPaths) > 0 {
-		log("Added to PATH")
-		if err := install.AddToPath(envPaths, opts.Scope); err != nil {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: PATH update: %v", err))
-		}
-	}
-
 	// Set environment variables.
+	envChanged := false
 	if len(envVars) > 0 {
 		for k, v := range envVars {
 			log("Set environment variable " + k + "=" + v)
-			if err := install.SetEnvVar(k, v, opts.Scope); err != nil {
-				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: env set %s: %v", k, err))
-			}
 		}
+
+		if err := install.SetEnvVarsNoBroadcast(envVars, opts.Scope); err != nil {
+			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: env set batch: %v", err))
+			for k, v := range envVars {
+				if err := install.SetEnvVarNoBroadcast(k, v, opts.Scope); err != nil {
+					s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: env set %s: %v", k, err))
+					continue
+				}
+				envChanged = true
+			}
+		} else {
+			envChanged = true
+		}
+	}
+
+	if pathChanged || envChanged {
+		install.BroadcastEnvironmentChange()
 	}
 
 	// Run post_install hook.
@@ -836,4 +861,19 @@ func logStepError() {
 
 func logHookStepError() {
 	_, _ = fmt.Fprintln(os.Stdout, "error.")
+}
+
+func displayPath(path string) string {
+	clean := filepath.Clean(path)
+	profile := os.Getenv("USERPROFILE")
+	if profile == "" {
+		return clean
+	}
+
+	profileClean := filepath.Clean(profile)
+	prefix := strings.ToLower(profileClean + string(filepath.Separator))
+	if strings.HasPrefix(strings.ToLower(clean), prefix) {
+		return "~" + clean[len(profileClean):]
+	}
+	return clean
 }

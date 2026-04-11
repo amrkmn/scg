@@ -235,3 +235,22 @@ func TestExpandEnvSetVarsPrefixCollision(t *testing.T) {
 		t.Fatalf("ARCH_TEXT = %q, want %q", got["ARCH_TEXT"], "x64")
 	}
 }
+
+func TestPathAdditions(t *testing.T) {
+	input := []string{
+		`C:\apps\a\bin`,
+		`C:\apps\b\bin`,
+		`C:\apps\a\bin`,
+	}
+	current := []string{
+		`C:\apps\b\bin`,
+	}
+
+	got := pathAdditions(input, current)
+	if len(got) != 1 {
+		t.Fatalf("pathAdditions length = %d, want 1; got=%v", len(got), got)
+	}
+	if got[0] != `C:\apps\a\bin` {
+		t.Fatalf("pathAdditions[0] = %q, want %q", got[0], `C:\apps\a\bin`)
+	}
+}

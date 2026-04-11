@@ -1,6 +1,8 @@
 package install
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -83,5 +85,36 @@ func TestExtractExtensionTarVariants(t *testing.T) {
 	ext := strings.ToLower(".tar.zst")
 	if !isSevenZipArchive(ext) {
 		t.Errorf("isSevenZipArchive(%q) = false, want true (compound tar extension)", ext)
+	}
+}
+
+func TestLooksLikeTar(t *testing.T) {
+	tmp := t.TempDir()
+
+	tarLike := filepath.Join(tmp, "payload")
+	buf := make([]byte, 262)
+	copy(buf[257:262], []byte("ustar"))
+	if err := os.WriteFile(tarLike, buf, 0o644); err != nil {
+		t.Fatalf("write tar-like file: %v", err)
+	}
+
+	isTar, err := looksLikeTar(tarLike)
+	if err != nil {
+		t.Fatalf("looksLikeTar(tarLike) error: %v", err)
+	}
+	if !isTar {
+		t.Fatalf("looksLikeTar(tarLike) = false, want true")
+	}
+
+	notTar := filepath.Join(tmp, "plain.bin")
+	if err := os.WriteFile(notTar, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write non-tar file: %v", err)
+	}
+	isTar, err = looksLikeTar(notTar)
+	if err != nil {
+		t.Fatalf("looksLikeTar(notTar) error: %v", err)
+	}
+	if isTar {
+		t.Fatalf("looksLikeTar(notTar) = true, want false")
 	}
 }
