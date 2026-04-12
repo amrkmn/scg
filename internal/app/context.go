@@ -12,15 +12,16 @@ type Context struct {
 
 // Services holds all application service instances.
 type Services struct {
-	Apps      *service.AppsService
-	Buckets   *service.BucketService
-	Search    *service.SearchService
-	Status    *service.StatusService
-	Manifests *service.ManifestService
-	Shims     *service.ShimService
-	Config    *service.ConfigService
-	Cleanup   *service.CleanupService
-	Installer *service.InstallService
+	Apps        *service.AppsService
+	Buckets     *service.BucketService
+	Search      *service.SearchService
+	Status      *service.StatusService
+	Manifests   *service.ManifestService
+	Shims       *service.ShimService
+	Config      *service.ConfigService
+	Cleanup     *service.CleanupService
+	Installer   *service.InstallService
+	Uninstaller *service.UninstallService
 }
 
 // NewContext constructs a fully wired Context with all services initialised.
@@ -31,15 +32,16 @@ func NewContext(version string, verbose bool) *Context {
 	}
 	ctx.logger = NewConsoleLogger(verbose)
 	ctx.Services = &Services{
-		Apps:      service.NewAppsService(ctx),
-		Buckets:   service.NewBucketService(ctx),
-		Search:    service.NewSearchService(ctx),
-		Status:    service.NewStatusService(ctx),
-		Manifests: service.NewManifestService(ctx),
-		Shims:     service.NewShimService(ctx),
-		Config:    service.NewConfigService(ctx),
-		Cleanup:   service.NewCleanupService(ctx),
-		Installer: service.NewInstallService(ctx),
+		Apps:        service.NewAppsService(ctx),
+		Buckets:     service.NewBucketService(ctx),
+		Search:      service.NewSearchService(ctx),
+		Status:      service.NewStatusService(ctx),
+		Manifests:   service.NewManifestService(ctx),
+		Shims:       service.NewShimService(ctx),
+		Config:      service.NewConfigService(ctx),
+		Cleanup:     service.NewCleanupService(ctx),
+		Installer:   service.NewInstallService(ctx),
+		Uninstaller: service.NewUninstallService(ctx),
 	}
 	return ctx
 }

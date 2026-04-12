@@ -88,6 +88,32 @@ func CreateStartMenuShortcuts(defs []ShortcutDef, appCurrentDir string, scope sc
 	return nil
 }
 
+func RemoveStartMenuShortcuts(defs []ShortcutDef, scope scoop.InstallScope) error {
+	if len(defs) == 0 {
+		return nil
+	}
+
+	programs := startMenuProgramsDir(scope)
+	if programs == "" {
+		return nil
+	}
+
+	for _, def := range defs {
+		lnkPath := filepath.Join(programs, def.Name+".lnk")
+		_ = os.Remove(lnkPath)
+	}
+
+	return nil
+}
+
+func StartMenuShortcutPath(name string, scope scoop.InstallScope) string {
+	programs := startMenuProgramsDir(scope)
+	if programs == "" {
+		return ""
+	}
+	return filepath.Join(programs, name+".lnk")
+}
+
 func startMenuProgramsDir(scope scoop.InstallScope) string {
 	if scope == scoop.ScopeGlobal {
 		if pd := os.Getenv("ProgramData"); pd != "" {

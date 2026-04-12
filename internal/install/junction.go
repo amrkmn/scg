@@ -33,6 +33,18 @@ func RemoveJunction(link string) error {
 	return os.RemoveAll(link)
 }
 
+func IsJunction(path string) bool {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeSymlink != 0
+}
+
+func RemoveReadOnly(path string) {
+	nativeRemoveReadOnly(path)
+}
+
 func ResolveCurrentDir(appName string, scope InstallScope, useJunction bool) string {
 	paths := ResolvePathsHelper(scope)
 	if useJunction {

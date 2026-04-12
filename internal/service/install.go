@@ -345,7 +345,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	}
 
 	// Create current/ junction.
-	log("Created junction (current/ → " + m.Version + ")")
+	log(fmt.Sprintf("Linking %s → %s", displayPath(currentLink), displayPath(versionDir)))
 	if err := install.CreateJunction(currentLink, versionDir); err != nil {
 		result.Error = fmt.Errorf("failed to create junction: %w", err)
 		return result
@@ -374,8 +374,12 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: PATH update: %v", err))
 		} else {
 			pathChanged = len(pathAdditions) > 0
+			pathTarget := "your"
+			if opts.Scope == scoop.ScopeGlobal {
+				pathTarget = "global"
+			}
 			for _, p := range pathAdditions {
-				log(fmt.Sprintf("Adding %s to your path.", displayPath(p)))
+				log(fmt.Sprintf("Adding %s to %s path.", displayPath(p), pathTarget))
 			}
 		}
 	}

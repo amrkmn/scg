@@ -131,3 +131,51 @@ func IsArchive(path string) bool {
 		return false
 	}
 }
+
+type RunningProcess struct {
+	PID  int
+	Name string
+	Path string
+}
+
+func FindRunningProcesses(appDir string) ([]RunningProcess, error) {
+	psPath := FindPowerShell()
+	if psPath == "" {
+		return nil, fmt.Errorf("no PowerShell found")
+	}
+
+	script := fmt.Sprintf(`
+$dir = '%s'
+$procs = Get-Process | Where-Object { $_.Path -like "$dir*" }
+if ($procs) {
+    $procs | ForEach-Object { Write-Host "$($_.Id)|$($_.Name)|$($_.Path)" }
+}
+`, strings.ReplaceAll(appDir, "'", "''"))
+
+	cmd := exec.Command(psPath, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to query processes: %w", err)
+	}
+
+	var procs []RunningProcess
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "|", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		var p RunningProcess
+		if _, err := fmt.Sscanf(parts[0], "%d", &p.PID); err != nil {
+			continue
+		}
+		p.Name = parts[1]
+		p.Path = parts[2]
+		procs = append(procs, p)
+	}
+	return procs, nil
+}
