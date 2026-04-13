@@ -42,6 +42,9 @@ fmt:
 check: fmt lint test
 	@echo All checks passed!
 
+run:
+	go run ./cmd $(ARGS)
+
 benchmark-search:
 	hyperfine --warmup 2 "dist/scg.exe search $(QUERY)" "sfsu search $(QUERY)"
 
