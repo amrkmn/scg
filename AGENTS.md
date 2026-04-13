@@ -1,25 +1,29 @@
 # AGENTS
 
 ## Scope and platform
-- This is a single Go module (`go.noz.one/scg`) targeting Windows Scoop workflows; many code paths shell out to Windows tools (`cmd`, `reg`, `attrib`, `msiexec`, PowerShell).
-- CLI entrypoint is `cmd/main.go`; command wiring is in `cmd/commands/root.go`; core behavior lives in `internal/service/*` plus `internal/install/*`.
+- Single Go module (`go.noz.one/scg`) targeting Windows Scoop workflows; many code paths shell out to Windows tools (`cmd`, `reg`, `attrib`, `msiexec`, PowerShell).
+- CLI entrypoint: `cmd/main.go`; command wiring: `cmd/commands/root.go`; core behavior: `internal/service/*` and `internal/install/*`.
 
-## High-value commands
-- Prefer `just` tasks over ad-hoc commands: `just test`, `just build`, `just lint`, `just fmt`, `just check`.
-- `just check` runs `fmt -> lint -> test` (same intended pre-commit flow).
-- CI on GitHub Actions runs on `windows-latest` and effectively does: `just test`, `just build`, then `just run version`.
-- Focused tests: `go test ./internal/...` or `go test ./internal/install -run TestParseBinField`.
+## Developer commands
+Use `make` (not `just`):
+- `make build` - Build scg binary to `dist/scg.exe`
+- `make test` - Run tests
+- `make lint` - Run golangci-lint
+- `make fmt` - Format code
+- `make check` - fmt -> lint -> test (pre-commit flow)
+- `make build-amd64`, `make build-386`, `make build-arm64` - Cross-arch builds
+- `make build-shim` - Rebuild shim.exe from `shim/src/main.zig` and refresh `internal/install/assets/shim.exe`
+
+CI runs: `make test`, `make build`, then `make run ARGS=version`.
+
+Version is injected at build time via `-ldflags "-X main.Version=..."`.
 
 ## Safety and side effects
-- `scg install` and install service code modify real Scoop state (`~/scoop` or `C:\ProgramData\scoop`), create junctions, write shims, and update persistent env/`PATH` via registry + PowerShell; avoid running these in a normal dev shell unless you intend host changes.
-- `cleanup` can remove installed versions and cache files from Scoop directories; treat as destructive.
+- `scg install` modifies real Scoop state (`~/scoop` or `C:\ProgramData\scoop`), creates junctions, writes shims, and updates env/PATH via registry + PowerShell.
+- `cleanup` removes installed versions and cache files from Scoop directories; treat as destructive.
 
-## Build and release specifics
-- Version is injected at build time via `-ldflags "-X main.Version=..."`; use `VERSION` env with just recipes.
-- Multi-arch Windows artifacts are produced via `just build-amd64`, `just build-386`, `just build-arm64` (or `just build-all`).
+## Architecture notes
+- Scoop paths are scope-aware (`internal/scoop/paths.go`: `ScopeUser` vs `ScopeGlobal`); thread scope through new features.
+- Manifest fields use permissive `any` typing (`internal/scoop/manifest.go`); keep parsing tolerant of Scoop's mixed JSON shapes.
+- Search and bucket scans are intentionally concurrent (`internal/service/search.go`); preserve order-sensitive output behavior in command layer, not worker layer.
 - Embedded shim binary is `internal/install/assets/shim.exe` (`//go:embed` in `internal/install/shim.go`); if shim behavior changes, rebuild under `shim/` and refresh this asset.
-
-## Repo conventions that are easy to miss
-- Scoop paths are scope-aware via `internal/scoop/paths.go` (`ScopeUser` vs `ScopeGlobal`); thread scope through new features.
-- Manifest fields use permissive `any` typing in `internal/scoop/manifest.go`; keep parsing tolerant of Scoop's mixed JSON shapes.
-- Search and bucket scans are intentionally concurrent in `internal/service/search.go`; preserve order-sensitive output behavior in command layer, not worker layer.
