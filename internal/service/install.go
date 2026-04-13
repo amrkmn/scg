@@ -125,7 +125,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 
 	// Warn when multiple buckets contain the same app and no bucket was explicitly requested.
 	requestedBucket, appName := parseBucketAndApp(appInput)
-	if requestedBucket == "" && bucket != nil {
+	if requestedBucket == "" {
 		allMatches := s.manifests.FindAllManifests(appInput)
 		matchCount := 0
 		for _, fm := range allMatches {
@@ -134,7 +134,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 			}
 		}
 		if matchCount > 1 {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("Multiple buckets contain manifest '%s', the current selection is '%s/%s'.", appName, bucket.Bucket, appName))
+			s.ctx.GetLogger().Warn(fmt.Sprintf("Multiple buckets contain manifest '%s', the current selection is '%s/%s'.", appName, bucketName, appName))
 		}
 	}
 

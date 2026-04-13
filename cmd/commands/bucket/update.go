@@ -157,6 +157,7 @@ func NewUpdateCommand() *cobra.Command {
 			// Print changelogs for updated buckets at the bottom
 			if changelog && updated > 0 {
 				fmt.Println()
+				fmt.Println("Changelog:")
 				sortedResults := make([]service.UpdateResult, len(results))
 				copy(sortedResults, results)
 				sort.Slice(sortedResults, func(i, j int) bool {

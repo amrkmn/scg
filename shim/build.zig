@@ -23,7 +23,7 @@ pub fn build(b: *std.Build) void {
     exe.root_module.strip = true;
 
     // Required for Win32 API (@cImport of windows.h)
-    exe.linkLibC();
+    exe.root_module.link_libc = true;
 
     b.installArtifact(exe);
 }

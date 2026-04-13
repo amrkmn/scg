@@ -27,11 +27,6 @@ jobs:
           go-version: 'stable'
           cache: true
 
-      - name: Set up just
-        uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3.1.0
-        with:
-          just-version: '1'
-
       - name: Get version info
         id: version
         shell: bash
@@ -43,12 +38,12 @@ jobs:
           echo "Building nightly version: $VERSION"
 
       - name: Run tests
-        run: just test
+        run: make test
 
       - name: Build binary
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: just build-${{ matrix.arch }}
+        run: make build-${{ matrix.arch }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
