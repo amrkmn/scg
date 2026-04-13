@@ -138,12 +138,6 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 		}
 	}
 
-	if opts.AsDependencyFlow {
-		s.ctx.GetLogger().Info(fmt.Sprintf("Installing '%s'...", appInput))
-	} else {
-		s.ctx.GetLogger().Header(fmt.Sprintf("Installing '%s' (%s) [%s] from '%s' bucket", appInput, m.Version, arch, bucketName))
-	}
-
 	// Check if already installed (upgrade case).
 	if installed != nil {
 		// Check if same bucket and version.
@@ -151,6 +145,12 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 			result.Skipped = true
 			return result
 		}
+	}
+
+	if opts.AsDependencyFlow {
+		s.ctx.GetLogger().Info(fmt.Sprintf("Installing '%s'...", appInput))
+	} else {
+		s.ctx.GetLogger().Header(fmt.Sprintf("Installing '%s' (%s) [%s] from '%s' bucket", appInput, m.Version, arch, bucketName))
 	}
 
 	// Check for running processes (simplified - just warn).
@@ -162,7 +162,6 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	if !opts.Independent {
 		deps := scoop.GetDependencies(m.Depends)
 		if len(deps) > 0 {
-			s.ctx.GetLogger().Info(fmt.Sprintf("Installing dependencies of '%s'...", appInput))
 			depOpts := opts
 			depOpts.AsDependencyFlow = true
 			depResults := s.Install(deps, depOpts)
@@ -172,7 +171,6 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 					return result
 				}
 			}
-			s.ctx.GetLogger().Info(fmt.Sprintf("Finished checking dependencies of '%s'.", appInput))
 		}
 	}
 
