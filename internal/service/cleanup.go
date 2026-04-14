@@ -97,18 +97,38 @@ func (s *CleanupService) CleanupApp(appName string, scope scoop.InstallScope, op
 		}
 	}
 
-	// Cache cleanup.
+	// Cache cleanup - remove outdated cache files and .download temp files for this app.
 	if opts.Cache {
 		cacheDir := paths.Cache
 		cacheEntries, err := os.ReadDir(cacheDir)
 		if err == nil {
 			prefix := strings.ToLower(appName) + "#"
 			prefixLen := len(prefix)
+			appDownloadName := strings.ToLower(appName) + ".download"
 			for _, e := range cacheEntries {
 				if e.IsDir() {
 					continue
 				}
 				nameLower := strings.ToLower(e.Name())
+
+				// Match .download temp files (e.g., "git.download")
+				if nameLower == appDownloadName {
+					downloadFile := filepath.Join(cacheDir, e.Name())
+					var size int64
+					if fi, err := e.Info(); err == nil {
+						size = fi.Size()
+					}
+					if opts.DryRun {
+						result.CacheFiles = append(result.CacheFiles, CacheEntry{Name: e.Name(), Size: size})
+						continue
+					}
+					if err := os.Remove(downloadFile); err == nil {
+						result.CacheFiles = append(result.CacheFiles, CacheEntry{Name: e.Name(), Size: size})
+					}
+					continue
+				}
+
+				// Match regular cache files (e.g., "git#2.43.0#hash.zip")
 				if !strings.HasPrefix(nameLower, prefix) {
 					continue
 				}
@@ -143,6 +163,31 @@ func (s *CleanupService) CleanupApp(appName string, scope scoop.InstallScope, op
 	}
 
 	return result
+}
+
+// CleanupAll removes .download temp files for all apps.
+// This is called after cleanup to ensure temp files are removed.
+func (s *CleanupService) CleanupAll(scope scoop.InstallScope) error {
+	paths := scoop.ResolvePaths(scope)
+	cacheDir := paths.Cache
+
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return err
+	}
+
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		// Remove all .download temp files.
+		if strings.HasSuffix(e.Name(), ".download") {
+			downloadFile := filepath.Join(cacheDir, e.Name())
+			_ = os.Remove(downloadFile) // Best effort
+		}
+	}
+
+	return nil
 }
 
 // getDirectorySize computes the total size of all files in a directory tree.

@@ -1,6 +1,8 @@
 package ui
 
-import "github.com/fatih/color"
+import (
+	"github.com/fatih/color"
+)
 
 // Color functions wrap fatih/color to return plain formatted strings.
 // Windows ANSI support is handled automatically by fatih/color.

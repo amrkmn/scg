@@ -104,6 +104,11 @@ func NewCleanupCommand() *cobra.Command {
 				displayCleanupResult(r, maxLen)
 			}
 
+			// Clean up any remaining .download temp files.
+			if flagCache && !flagDryRun {
+				_ = ctx.Services.Cleanup.CleanupAll(scope)
+			}
+
 			displayCleanupSummary(results)
 			return nil
 		},
@@ -139,7 +144,7 @@ func displayCleanupResult(r service.CleanupResult, maxNameLen int) {
 
 	detail := ""
 	if len(versionNames) > 0 {
-		detail = fmt.Sprintf("%s (%s)", joinStrings(versionNames), ui.Dim(formatSize(totalSize)))
+		detail = fmt.Sprintf("%s (%s)", joinStrings(versionNames), ui.Dim(ui.FormatSize(totalSize)))
 	}
 	cacheDetail := ""
 	if len(r.CacheFiles) > 0 {
@@ -185,34 +190,13 @@ func displayCleanupSummary(results []service.CleanupResult) {
 	if totalCache > 0 {
 		parts = append(parts, fmt.Sprintf("%d cache file(s) removed", totalCache))
 	}
-	parts = append(parts, fmt.Sprintf("%s freed", formatSize(totalSize)))
+	parts = append(parts, fmt.Sprintf("%s freed", ui.FormatSize(totalSize)))
 
 	_, _ = fmt.Fprintf(os.Stdout, "%s %s\n", ui.Success("✓"), joinStrings(parts))
 
 	if hasLocked {
 		_, _ = fmt.Fprintf(os.Stdout, "\n%s Some versions could not be removed (files may be in use).\n", ui.Warning("!"))
 		_, _ = fmt.Fprintln(os.Stdout, ui.Dim("  Tip: close any running applications and try again."))
-	}
-}
-
-func formatSize(bytes int64) string {
-	const (
-		KB = 1024
-		MB = 1024 * KB
-		GB = 1024 * MB
-		TB = 1024 * GB
-	)
-	switch {
-	case bytes >= TB:
-		return fmt.Sprintf("%.2f TB", float64(bytes)/TB)
-	case bytes >= GB:
-		return fmt.Sprintf("%.2f GB", float64(bytes)/GB)
-	case bytes >= MB:
-		return fmt.Sprintf("%.2f MB", float64(bytes)/MB)
-	case bytes >= KB:
-		return fmt.Sprintf("%.2f KB", float64(bytes)/KB)
-	default:
-		return fmt.Sprintf("%d B", bytes)
 	}
 }
 

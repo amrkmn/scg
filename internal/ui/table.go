@@ -4,8 +4,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"unicode/utf8"
 
+	"github.com/mattn/go-runewidth"
 	"golang.org/x/term"
 )
 
@@ -13,27 +13,20 @@ import (
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 // VisualLength returns the display width of s, ignoring ANSI escape codes.
+// Uses go-runewidth for proper Unicode width (East Asian wide chars, etc.).
 func VisualLength(s string) int {
 	stripped := ansiRe.ReplaceAllString(s, "")
-	return utf8.RuneCountInString(stripped)
+	return runewidth.StringWidth(stripped)
 }
 
 // Truncate shortens s to at most maxLen visual characters, appending "…" if truncated.
-// ANSI codes are preserved up to the truncation point then a reset is appended.
+// Uses go-runewidth for proper truncation of Unicode characters.
 func Truncate(s string, maxLen int) string {
-	if VisualLength(s) <= maxLen {
-		return s
-	}
 	if maxLen <= 0 {
 		return ""
 	}
-	// Strip and re-truncate plainly for simplicity (ANSI in truncated columns is rare)
 	stripped := ansiRe.ReplaceAllString(s, "")
-	runes := []rune(stripped)
-	if len(runes) > maxLen-1 {
-		runes = runes[:maxLen-1]
-	}
-	return string(runes) + "…"
+	return runewidth.Truncate(stripped, maxLen, "…")
 }
 
 // getTermWidth returns the terminal width, defaulting to 80 if unavailable.
@@ -45,18 +38,42 @@ func getTermWidth() int {
 	return w
 }
 
+// PadRight pads s with spaces on the right to reach the specified visual width.
+func PadRight(s string, width int) string {
+	vl := VisualLength(s)
+	if vl >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-vl)
+}
+
 // FormatLineColumns formats a 2D slice of strings into aligned columns.
 // weights controls proportional column sizing relative to terminal width.
 // Columns are separated by two spaces; the last column is not padded or truncated.
 // Like swb, columns are both shrunk (content too wide) and expanded (content too narrow)
 // to fill the terminal width proportionally.
-func FormatLineColumns(rows [][]string, weights []float64) string {
+// Optional maxWidth limits total width; if 0, uses terminal width.
+func FormatLineColumns(rows [][]string, weights []float64, maxWidth ...int) string {
 	if len(rows) == 0 {
 		return ""
 	}
 	numCols := len(rows[0])
 	if numCols == 0 {
 		return ""
+	}
+
+	// Track if maxWidth was explicitly set
+	// -1 means "don't stretch" (use natural widths)
+	// 0 means "use terminal width" (default behavior)
+	// >0 means "limit to this width"
+	stretch := true
+	termW := getTermWidth()
+	if len(maxWidth) > 0 {
+		if maxWidth[0] < 0 {
+			stretch = false
+		} else if maxWidth[0] > 0 {
+			termW = maxWidth[0]
+		}
 	}
 
 	// Normalise weights: must have one per column; default to equal weights.
@@ -95,7 +112,6 @@ func FormatLineColumns(rows [][]string, weights []float64) string {
 		}
 	}
 
-	termW := getTermWidth()
 	available := termW - sep*(numCols-1) // space for content, excluding separators
 	if available < numCols {
 		available = numCols
@@ -147,7 +163,7 @@ func FormatLineColumns(rows [][]string, weights []float64) string {
 			}
 			colWidths[maxIdx]--
 		}
-	} else {
+	} else if stretch {
 		// Content fits — expand columns proportionally to fill terminal width.
 		// Start with natural widths, then distribute remaining space by weight.
 		copy(colWidths, natural)
@@ -162,6 +178,9 @@ func FormatLineColumns(rows [][]string, weights []float64) string {
 				colWidths[c] += extra
 			}
 		}
+	} else {
+		// maxWidth explicitly set and content fits — use natural widths.
+		copy(colWidths, natural)
 	}
 
 	// Build output lines.

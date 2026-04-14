@@ -20,6 +20,7 @@ type Services struct {
 	Shims       *service.ShimService
 	Config      *service.ConfigService
 	Cleanup     *service.CleanupService
+	Cache       *service.CacheService
 	Installer   *service.InstallService
 	Uninstaller *service.UninstallService
 }
@@ -40,6 +41,7 @@ func NewContext(version string, verbose bool) *Context {
 		Shims:       service.NewShimService(ctx),
 		Config:      service.NewConfigService(ctx),
 		Cleanup:     service.NewCleanupService(ctx),
+		Cache:       service.NewCacheService(ctx),
 		Installer:   service.NewInstallService(ctx),
 		Uninstaller: service.NewUninstallService(ctx),
 	}
