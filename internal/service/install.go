@@ -104,6 +104,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 
 	// Find the manifest.
 	installed, bucket := s.manifests.FindManifestPair(appInput)
+	_, appName := parseBucketAndApp(appInput)
 
 	// Determine the manifest to install from.
 	var m *scoop.Manifest
@@ -124,7 +125,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	result.Version = m.Version
 
 	// Warn when multiple buckets contain the same app and no bucket was explicitly requested.
-	requestedBucket, appName := parseBucketAndApp(appInput)
+	requestedBucket, _ := parseBucketAndApp(appInput)
 	if requestedBucket == "" {
 		allMatches := s.manifests.FindAllManifests(appInput)
 		matchCount := 0
@@ -155,7 +156,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 
 	// Check for running processes (simplified - just warn).
 	paths := scoop.ResolvePaths(opts.Scope)
-	appDir := filepath.Join(paths.Apps, appInput)
+	appDir := filepath.Join(paths.Apps, appName)
 	versionDir := filepath.Join(appDir, m.Version)
 
 	// Resolve dependencies (if not --independent).
@@ -204,9 +205,9 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 
 	// Determine if a download will actually happen (vs cache hit).
 	willDownload := opts.NoCache
-	cachePath := dm.CachePath(appInput, m.Version, dlURL)
+	cachePath := dm.CachePath(appName, m.Version, dlURL)
 	if !willDownload {
-		if existingPath, ok := dm.FindCachedPath(appInput, m.Version, dlURL); ok {
+		if existingPath, ok := dm.FindCachedPath(appName, m.Version, dlURL); ok {
 			cachePath = existingPath
 		} else {
 			willDownload = true
@@ -216,7 +217,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 		log("Loading " + filepath.Base(cachePath) + " from cache")
 	}
 
-	dlResult, err := dm.Download(appInput, m.Version, dlURL, !opts.NoCache, opts.Proxy)
+	dlResult, err := dm.Download(appName, m.Version, dlURL, !opts.NoCache, opts.Proxy)
 	if err != nil {
 		result.Error = fmt.Errorf("download failed: %w", err)
 		return result
@@ -229,14 +230,14 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	}
 
 	// Build environment variables (after download so $fname is available).
-	persistDir := filepath.Join(paths.Root, "persist", appInput)
-	downloadFile := install.DownloadFileName(appInput, dlURL)
+	persistDir := filepath.Join(paths.Root, "persist", appName)
+	downloadFile := install.DownloadFileName(appName, dlURL)
 	preHookEnv := install.SetupHookEnvVars(
 		versionDir,   // dir (version path before current is linked)
 		versionDir,   // original_dir (version-specific)
 		m.Version,    // version
 		arch,         // architecture
-		appInput,     // app
+		appName,      // app
 		persistDir,   // persist_dir
 		paths.Root,   // scoopdir
 		downloadFile, // fname
@@ -247,7 +248,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 		versionDir,   // original_dir (version-specific)
 		m.Version,    // version
 		arch,         // architecture
-		appInput,     // app
+		appName,      // app
 		persistDir,   // persist_dir
 		paths.Root,   // scoopdir
 		downloadFile, // fname
@@ -387,7 +388,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 		for _, item := range persistItems {
 			log("Persisting " + item)
 		}
-		if err := install.SetupPersistData(appInput, persistItems, currentLink, opts.Scope); err != nil {
+		if err := install.SetupPersistData(appName, persistItems, currentLink, opts.Scope); err != nil {
 			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: persist setup: %v", err))
 		}
 	}
