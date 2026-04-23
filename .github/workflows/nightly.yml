@@ -30,7 +30,7 @@ jobs:
       - name: Set up Zig
         uses: mlugg/setup-zig@v1
         with:
-          version: master
+          version: "0.16.0"
 
       - name: Get version info
         id: version
