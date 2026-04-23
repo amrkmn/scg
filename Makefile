@@ -22,18 +22,22 @@ build-all: build-amd64 build-386 build-arm64
 
 build-shim:
 	cd shim && zig build
+	@mkdir -p internal/install/assets
 	cp shim/zig-out/bin/shim.exe internal/install/assets/shim.exe
 
 build-shim-amd64:
 	cd shim && zig build -Dtarget=x86_64-windows --prefix "zig-out/x64"
+	@mkdir -p internal/install/assets
 	cp shim/zig-out/x64/bin/shim.exe internal/install/assets/shim.exe
 
 build-shim-386:
 	cd shim && zig build -Dtarget=x86-windows --prefix "zig-out/x86"
+	@mkdir -p internal/install/assets
 	cp shim/zig-out/x86/bin/shim.exe internal/install/assets/shim.exe
 
 build-shim-arm64:
 	cd shim && zig build -Dtarget=aarch64-windows --prefix "zig-out/arm64"
+	@mkdir -p internal/install/assets
 	cp shim/zig-out/arm64/bin/shim.exe internal/install/assets/shim.exe
 
 install:
