@@ -27,11 +27,16 @@ jobs:
           go-version: 'stable'
           cache: true
 
-      - name: Run tests
-        run: make test
+      - name: Set up Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: master
 
       - name: Build
         run: make build
+
+      - name: Run tests
+        run: make test
 
       - name: Test binary
         run: make run ARGS=version
@@ -47,6 +52,11 @@ jobs:
         with:
           go-version: 'stable'
           cache: true
+
+      - name: Set up Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: master
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
