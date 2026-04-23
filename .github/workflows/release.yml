@@ -51,6 +51,9 @@ jobs:
           echo "version_no_v=$VERSION_NO_V" >> $GITHUB_OUTPUT
           echo "Building version: $VERSION (binary version: $VERSION_NO_V)"
 
+      - name: Build shim
+        run: make build-shim
+
       - name: Run tests
         run: make test
 
