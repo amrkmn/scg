@@ -40,7 +40,7 @@ install:
 	go mod download
 	go mod tidy
 
-test:
+test: build-shim
 	go test ./...
 
 bench:
