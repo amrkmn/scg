@@ -3,15 +3,19 @@ VERSION = 0.1.0
 
 # Build targets
 build:
+	$(MAKE) build-shim
 	go build -ldflags "-X main.Version=$(VERSION) -s -w" -o dist/scg.exe ./cmd
 
 build-amd64:
+	$(MAKE) build-shim-amd64
 	GOOS=windows GOARCH=amd64 go build -ldflags "-X main.Version=$(VERSION) -s -w" -o dist/scg-amd64.exe ./cmd
 
 build-386:
+	$(MAKE) build-shim-386
 	GOOS=windows GOARCH=386 go build -ldflags "-X main.Version=$(VERSION) -s -w" -o dist/scg-386.exe ./cmd
 
 build-arm64:
+	$(MAKE) build-shim-arm64
 	GOOS=windows GOARCH=arm64 go build -ldflags "-X main.Version=$(VERSION) -s -w" -o dist/scg-arm64.exe ./cmd
 
 build-all: build-amd64 build-386 build-arm64
@@ -19,6 +23,18 @@ build-all: build-amd64 build-386 build-arm64
 build-shim:
 	cd shim && zig build
 	cp shim/zig-out/bin/shim.exe internal/install/assets/shim.exe
+
+build-shim-amd64:
+	cd shim && zig build -Dtarget=x86_64-windows --prefix "zig-out/x64"
+	cp shim/zig-out/x64/bin/shim.exe internal/install/assets/shim.exe
+
+build-shim-386:
+	cd shim && zig build -Dtarget=x86-windows --prefix "zig-out/x86"
+	cp shim/zig-out/x86/bin/shim.exe internal/install/assets/shim.exe
+
+build-shim-arm64:
+	cd shim && zig build -Dtarget=aarch64-windows --prefix "zig-out/arm64"
+	cp shim/zig-out/arm64/bin/shim.exe internal/install/assets/shim.exe
 
 install:
 	go mod download

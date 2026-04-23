@@ -1,6 +1,7 @@
 dist/
 .serena/
 
-# Zig build artifacts
 shim/.zig-cache/
 shim/zig-out/
+
+internal/install/assets/*

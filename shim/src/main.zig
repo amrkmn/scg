@@ -8,59 +8,112 @@ comptime {
 }
 
 const win32 = @cImport({
+    if (builtin.cpu.arch == .x86) {
+        @cDefine("_X86_", "1");
+    }
     @cInclude("windows.h");
     @cInclude("shellapi.h");
+    @cInclude("shlwapi.h");
 });
 
-// Job Object limit: kill child processes when job handle is closed
-const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x2000;
-// CreateProcessW error when target requires UAC elevation
-const ERROR_ELEVATION_REQUIRED: u32 = 740;
-// Directory placeholder in .shim files
 const DIR_PLACEHOLDER = "%~dp0";
 
-// Ctrl+C handler: ignore all signals so they propagate to the child process.
-// Without this, Ctrl+C kills the shim and orphans the child.
 fn ctrlHandler(_: win32.DWORD) callconv(.c) win32.BOOL {
     return win32.TRUE;
 }
 
-// Expand %VAR% environment variable references in a string.
-fn expandEnvVars(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
-    var result: std.ArrayList(u8) = .empty;
-    defer result.deinit(allocator);
+fn writeStderr(msg: []const u8) void {
+    const stderr_handle = win32.GetStdHandle(win32.STD_ERROR_HANDLE);
+    const invalid = @as(win32.HANDLE, @ptrFromInt(~@as(usize, 0)));
+    if (stderr_handle == null or stderr_handle == invalid) return;
 
-    var i: usize = 0;
-    while (i < input.len) {
-        if (input[i] == '%') {
-            const start = i + 1;
-            var end = start;
-            while (end < input.len and input[end] != '%') : (end += 1) {}
-
-            if (end < input.len and end > start) {
-                const var_name = input[start..end];
-                if (std.process.getEnvVarOwned(allocator, var_name)) |value| {
-                    defer allocator.free(value);
-                    try result.appendSlice(allocator, value);
-                } else |_| {
-                    // Variable not found, keep original text
-                    try result.appendSlice(allocator, input[i .. end + 1]);
-                }
-                i = end + 1;
-            } else {
-                try result.append(allocator, input[i]);
-                i += 1;
-            }
-        } else {
-            try result.append(allocator, input[i]);
-            i += 1;
-        }
-    }
-
-    return result.toOwnedSlice(allocator);
+    var written: win32.DWORD = 0;
+    _ = win32.WriteFile(stderr_handle, msg.ptr, @intCast(msg.len), &written, null);
 }
 
-// Replace all occurrences of a substring.
+fn stripUtf8Bom(contents: []const u8) []const u8 {
+    if (contents.len >= 3 and contents[0] == 0xEF and contents[1] == 0xBB and contents[2] == 0xBF) {
+        return contents[3..];
+    }
+    return contents;
+}
+
+fn appendPathForCommandLine(buf: *std.ArrayList(u8), allocator: std.mem.Allocator, path: []const u8) !void {
+    if (path.len >= 2 and path[0] == '"' and path[path.len - 1] == '"') {
+        try buf.appendSlice(allocator, path);
+        return;
+    }
+    if (std.mem.indexOfScalar(u8, path, ' ') == null) {
+        try buf.appendSlice(allocator, path);
+        return;
+    }
+    var end = path.len;
+    while (end > 0 and path[end - 1] == '\\') end -= 1;
+    try buf.append(allocator, '"');
+    try buf.appendSlice(allocator, path[0..end]);
+    try buf.appendNTimes(allocator, '\\', (path.len - end) * 2);
+    try buf.append(allocator, '"');
+}
+
+fn isGuiApplication(allocator: std.mem.Allocator, path: []const u8) !bool {
+    const path_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, path);
+    defer allocator.free(path_w);
+
+    const unquoted = try allocator.dupeZ(u16, path_w);
+    defer allocator.free(unquoted);
+    _ = win32.PathUnquoteSpacesW(unquoted.ptr);
+
+    var file_info: win32.SHFILEINFOW = std.mem.zeroes(win32.SHFILEINFOW);
+    const exe_type = win32.SHGetFileInfoW(
+        unquoted.ptr,
+        0,
+        &file_info,
+        @sizeOf(win32.SHFILEINFOW),
+        win32.SHGFI_EXETYPE,
+    );
+    if (exe_type == 0) return false;
+    return (@as(u16, @truncate(exe_type >> 16)) != 0);
+}
+
+fn rawUserArgsTail(allocator: std.mem.Allocator) ![]u8 {
+    const cmdline_w = win32.GetCommandLineW();
+    if (cmdline_w == null) return allocator.dupe(u8, "");
+
+    const cmdline = std.mem.span(cmdline_w.?);
+    if (cmdline.len == 0) return allocator.dupe(u8, "");
+
+    var i: usize = 0;
+    while (i < cmdline.len and cmdline[i] == ' ') : (i += 1) {}
+    if (i < cmdline.len and cmdline[i] == '"') {
+        i += 1;
+        while (i < cmdline.len and cmdline[i] != '"') : (i += 1) {}
+        if (i < cmdline.len) i += 1;
+    } else {
+        while (i < cmdline.len and cmdline[i] != ' ') : (i += 1) {}
+    }
+    while (i < cmdline.len and cmdline[i] == ' ') : (i += 1) {}
+
+    return std.unicode.wtf16LeToWtf8Alloc(allocator, cmdline[i..]) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+}
+
+fn expandEnvVars(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    const input_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, input);
+    defer allocator.free(input_w);
+
+    const needed = win32.ExpandEnvironmentStringsW(input_w.ptr, null, 0);
+    if (needed == 0) return allocator.dupe(u8, input);
+
+    const buf = try allocator.alloc(u16, needed);
+    defer allocator.free(buf);
+
+    const len = win32.ExpandEnvironmentStringsW(input_w.ptr, buf.ptr, needed);
+    if (len == 0 or len > needed) return allocator.dupe(u8, input);
+
+    return std.unicode.wtf16LeToWtf8Alloc(allocator, buf[0 .. len - 1]);
+}
+
 fn replaceOwned(allocator: std.mem.Allocator, input: []const u8, needle: []const u8, replacement: []const u8) ![]u8 {
     var result: std.ArrayList(u8) = .empty;
     defer result.deinit(allocator);
@@ -79,33 +132,20 @@ fn replaceOwned(allocator: std.mem.Allocator, input: []const u8, needle: []const
     return result.toOwnedSlice(allocator);
 }
 
-// Build a Windows command line string from argv, quoting args that contain spaces.
-fn buildCommandLine(allocator: std.mem.Allocator, argv: []const []const u8) ![]u8 {
-    var result: std.ArrayList(u8) = .empty;
-    defer result.deinit(allocator);
+fn spawnWithJob(allocator: std.mem.Allocator, path: []const u8, shim_args: ?[]const u8, user_tail: []const u8, cwd: ?[]const u8, wait_for_exit: bool) !u32 {
+    var cmdline: std.ArrayList(u8) = .empty;
+    defer cmdline.deinit(allocator);
 
-    for (argv, 0..) |arg, idx| {
-        if (idx > 0) try result.append(allocator, ' ');
-        const needs_quote = arg.len == 0 or std.mem.indexOfAny(u8, arg, " \t\"") != null;
-        if (needs_quote) {
-            try result.append(allocator, '"');
-            for (arg) |c| {
-                if (c == '"') try result.append(allocator, '"');
-                try result.append(allocator, c);
-            }
-            try result.append(allocator, '"');
-        } else {
-            try result.appendSlice(allocator, arg);
+    try appendPathForCommandLine(&cmdline, allocator, path);
+    if (shim_args) |args| {
+        if (args.len > 0) {
+            try cmdline.append(allocator, ' ');
+            try cmdline.appendSlice(allocator, args);
         }
     }
+    try cmdline.appendSlice(allocator, user_tail);
 
-    return result.toOwnedSlice(allocator);
-}
-
-// Spawn a process with Job Object (orphan prevention) and Ctrl+C handling.
-// Falls back to ShellExecuteExW for UAC elevation if needed.
-fn spawnWithJob(allocator: std.mem.Allocator, argv: []const []const u8, cwd: ?[]const u8) !u32 {
-    const cmdline_utf8 = try buildCommandLine(allocator, argv);
+    const cmdline_utf8 = try cmdline.toOwnedSlice(allocator);
     defer allocator.free(cmdline_utf8);
 
     const cmdline_utf16 = try std.unicode.utf8ToUtf16LeAllocZ(allocator, cmdline_utf8);
@@ -117,51 +157,58 @@ fn spawnWithJob(allocator: std.mem.Allocator, argv: []const []const u8, cwd: ?[]
     }
     defer if (cwd_utf16) |c| allocator.free(c);
 
-    // Register Ctrl+C handler so signals pass to the child
     _ = win32.SetConsoleCtrlHandler(ctrlHandler, win32.TRUE);
 
-    // Create a Job Object with KILL_ON_JOB_CLOSE so children die if we die
-    const job = win32.CreateJobObjectW(null, null);
-    if (job == null) return error.CreateJobObjectFailed;
-    defer _ = win32.CloseHandle(job);
+    var job: ?win32.HANDLE = null;
+    defer {
+        if (job) |h| {
+            _ = win32.CloseHandle(h);
+        }
+    }
 
-    var job_info: win32.JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std.mem.zeroes(win32.JOBOBJECT_EXTENDED_LIMIT_INFORMATION);
-    job_info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-    if (win32.SetInformationJobObject(
-        job,
-        win32.JobObjectExtendedLimitInformation,
-        &job_info,
-        @sizeOf(@TypeOf(job_info)),
-    ) == 0) {
-        return error.SetJobInfoFailed;
+    if (wait_for_exit) {
+        job = win32.CreateJobObjectW(null, null);
+        if (job == null) return error.CreateJobObjectFailed;
+
+        var job_info: win32.JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std.mem.zeroes(win32.JOBOBJECT_EXTENDED_LIMIT_INFORMATION);
+        job_info.BasicLimitInformation.LimitFlags = win32.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | win32.JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
+        if (win32.SetInformationJobObject(
+            job.?,
+            win32.JobObjectExtendedLimitInformation,
+            &job_info,
+            @sizeOf(@TypeOf(job_info)),
+        ) == 0) {
+            return error.SetJobInfoFailed;
+        }
     }
 
     var si: win32.STARTUPINFOW = std.mem.zeroes(win32.STARTUPINFOW);
+    win32.GetStartupInfoW(&si);
     si.cb = @sizeOf(win32.STARTUPINFOW);
     var pi: win32.PROCESS_INFORMATION = std.mem.zeroes(win32.PROCESS_INFORMATION);
 
-    // CreateProcessW may modify the command line buffer
     const cmdline_buf = try allocator.dupeZ(u16, cmdline_utf16);
     defer allocator.free(cmdline_buf);
 
     const create_result = win32.CreateProcessW(
-        null, // application name (use command line)
-        @ptrCast(cmdline_buf), // command line (mutable)
-        null, // process security attributes
-        null, // thread security attributes
-        win32.TRUE, // inherit handles (stdin/stdout/stderr)
-        0, // creation flags
-        null, // environment (inherit parent)
-        if (cwd_utf16) |c| c.ptr else null, // current directory
+        null,
+        @ptrCast(cmdline_buf),
+        null,
+        null,
+        win32.TRUE,
+        win32.CREATE_SUSPENDED,
+        null,
+        if (cwd_utf16) |c| c.ptr else null,
         &si,
         &pi,
     );
 
     if (create_result == 0) {
         const err = win32.GetLastError();
-        if (err == ERROR_ELEVATION_REQUIRED) {
-            return try shellExecuteElevated(allocator, argv);
+        if (err == win32.ERROR_ELEVATION_REQUIRED) {
+            return try shellExecuteElevated(allocator, path, shim_args, user_tail, wait_for_exit);
         }
+        writeStderr("Shim: could not create process.\n");
         return error.CreateProcessFailed;
     }
 
@@ -170,8 +217,17 @@ fn spawnWithJob(allocator: std.mem.Allocator, argv: []const []const u8, cwd: ?[]
         _ = win32.CloseHandle(pi.hThread);
     }
 
-    // Assign child to job object for lifecycle management
-    _ = win32.AssignProcessToJobObject(job, pi.hProcess);
+    if (job) |h| {
+        _ = win32.AssignProcessToJobObject(h, pi.hProcess);
+    }
+    if (win32.ResumeThread(pi.hThread) == 0xFFFFFFFF) {
+        writeStderr("Shim: could not resume child process.\n");
+        return error.ResumeThreadFailed;
+    }
+
+    if (!wait_for_exit) {
+        return 0;
+    }
 
     _ = win32.WaitForSingleObject(pi.hProcess, win32.INFINITE);
 
@@ -181,20 +237,21 @@ fn spawnWithJob(allocator: std.mem.Allocator, argv: []const []const u8, cwd: ?[]
     return exit_code;
 }
 
-// UAC elevation fallback using ShellExecuteExW with "runas" verb.
-fn shellExecuteElevated(allocator: std.mem.Allocator, argv: []const []const u8) !u32 {
-    if (argv.len == 0) return error.EmptyArgs;
+fn shellExecuteElevated(allocator: std.mem.Allocator, path: []const u8, shim_args: ?[]const u8, user_tail: []const u8, wait_for_exit: bool) !u32 {
+    if (path.len == 0) return error.EmptyArgs;
 
-    const exe_utf16 = try std.unicode.utf8ToUtf16LeAllocZ(allocator, argv[0]);
+    const exe_utf16 = try std.unicode.utf8ToUtf16LeAllocZ(allocator, path);
     defer allocator.free(exe_utf16);
 
     var params_utf8: std.ArrayList(u8) = .empty;
     defer params_utf8.deinit(allocator);
 
-    for (argv[1..], 0..) |arg, idx| {
-        if (idx > 0) try params_utf8.append(allocator, ' ');
-        try params_utf8.appendSlice(allocator, arg);
+    if (shim_args) |args| {
+        if (args.len > 0) {
+            try params_utf8.appendSlice(allocator, args);
+        }
     }
+    try params_utf8.appendSlice(allocator, user_tail);
 
     const params_utf16 = if (params_utf8.items.len > 0)
         try std.unicode.utf8ToUtf16LeAllocZ(allocator, params_utf8.items)
@@ -206,17 +263,24 @@ fn shellExecuteElevated(allocator: std.mem.Allocator, argv: []const []const u8) 
 
     var sei: win32.SHELLEXECUTEINFOW = std.mem.zeroes(win32.SHELLEXECUTEINFOW);
     sei.cbSize = @sizeOf(win32.SHELLEXECUTEINFOW);
+    sei.fMask = win32.SEE_MASK_NOCLOSEPROCESS;
     sei.lpVerb = verb;
     sei.lpFile = exe_utf16;
     sei.lpParameters = if (params_utf16) |p| p.ptr else null;
     sei.nShow = win32.SW_NORMAL;
 
     if (win32.ShellExecuteExW(&sei) == 0) {
+        writeStderr("Shim: could not create elevated process.\n");
         return error.ShellExecuteFailed;
     }
 
     if (sei.hProcess != null) {
         defer _ = win32.CloseHandle(sei.hProcess);
+
+        if (!wait_for_exit) {
+            return 0;
+        }
+
         _ = win32.WaitForSingleObject(sei.hProcess, win32.INFINITE);
 
         var exit_code: u32 = 0;
@@ -243,12 +307,44 @@ const ShimConfig = struct {
     }
 };
 
-fn readShimConfig(allocator: std.mem.Allocator, shim_path: []const u8, shim_dir: []const u8) !ShimConfig {
-    const file = try std.fs.cwd().openFile(shim_path, .{});
-    defer file.close();
+fn readFileToEndAlloc(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+    const path_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, path);
+    defer allocator.free(path_w);
 
-    const contents = try file.readToEndAlloc(allocator, 8192);
-    defer allocator.free(contents);
+    const handle = win32.CreateFileW(
+        path_w.ptr,
+        win32.GENERIC_READ,
+        win32.FILE_SHARE_READ,
+        null,
+        win32.OPEN_EXISTING,
+        win32.FILE_ATTRIBUTE_NORMAL,
+        null,
+    );
+    const INVALID_HANDLE_VALUE = @as(win32.HANDLE, @ptrFromInt(~@as(usize, 0)));
+    if (handle == INVALID_HANDLE_VALUE) return error.OpenFileFailed;
+    defer _ = win32.CloseHandle(handle);
+
+    const file_size = win32.GetFileSize(handle, null);
+    if (file_size == 0xFFFFFFFF) return error.GetFileSizeFailed;
+
+    const buf = try allocator.alloc(u8, file_size);
+    errdefer allocator.free(buf);
+
+    var read: u32 = 0;
+    if (win32.ReadFile(handle, buf.ptr, file_size, &read, null) == 0) {
+        return error.ReadFileFailed;
+    }
+    if (read != file_size) {
+        return error.PartialRead;
+    }
+
+    return buf;
+}
+
+fn readShimConfig(allocator: std.mem.Allocator, shim_path: []const u8, shim_dir: []const u8) !ShimConfig {
+    const file_contents = try readFileToEndAlloc(allocator, shim_path);
+    defer allocator.free(file_contents);
+    const contents = stripUtf8Bom(file_contents);
 
     var config = ShimConfig{
         .path = &.{},
@@ -267,25 +363,23 @@ fn readShimConfig(allocator: std.mem.Allocator, shim_path: []const u8, shim_dir:
 
             if (std.mem.eql(u8, key, "path")) {
                 var path_val = val;
-                // Strip surrounding quotes
                 if (path_val.len >= 2 and path_val[0] == '"' and path_val[path_val.len - 1] == '"') {
                     path_val = path_val[1 .. path_val.len - 1];
                 }
-                // Expand %VAR% environment variables
                 var expanded = try expandEnvVars(allocator, path_val);
-                // Expand %~dp0 to shim's directory
                 if (std.mem.indexOf(u8, expanded, DIR_PLACEHOLDER)) |_| {
                     const old = expanded;
                     expanded = try replaceOwned(allocator, expanded, DIR_PLACEHOLDER, shim_dir);
                     allocator.free(old);
                 }
-                config.path = expanded;
+                const normalized = try replaceOwned(allocator, expanded, "/", "\\");
+                if (normalized.ptr != expanded.ptr) allocator.free(expanded);
+                config.path = normalized;
             } else if (std.mem.eql(u8, key, "args")) {
                 if (val.len > 0) {
                     config.args = try replaceOwned(allocator, val, DIR_PLACEHOLDER, shim_dir);
                 }
             } else {
-                // Any other key is treated as a custom environment variable
                 const expanded_val = try expandEnvVars(allocator, val);
                 try config.env_vars.append(allocator, .{
                     .key = try allocator.dupe(u8, key),
@@ -299,60 +393,57 @@ fn readShimConfig(allocator: std.mem.Allocator, shim_path: []const u8, shim_dir:
 }
 
 pub fn main() !void {
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    const allocator = std.heap.page_allocator;
 
-    // Get our own executable path
-    const exe_path = try std.fs.selfExePathAlloc(allocator);
+    var exe_path_w: std.ArrayList(u16) = .empty;
+    defer exe_path_w.deinit(allocator);
+    var buf_len: u32 = 260;
+    while (true) {
+        try exe_path_w.resize(allocator, buf_len);
+        const len = win32.GetModuleFileNameW(null, exe_path_w.items.ptr, buf_len);
+        if (len == 0) {
+            writeStderr("Shim: could not resolve current executable path.\n");
+            std.process.exit(1);
+        }
+        if (len < buf_len - 1) {
+            exe_path_w.shrinkRetainingCapacity(len);
+            break;
+        }
+        buf_len *= 2;
+    }
+    const exe_path = try std.unicode.wtf16LeToWtf8Alloc(allocator, exe_path_w.items);
     defer allocator.free(exe_path);
 
-    // Build the .shim file path: replace .exe with .shim
     const shim_path = if (std.mem.endsWith(u8, exe_path, ".exe"))
         try std.fmt.allocPrint(allocator, "{s}.shim", .{exe_path[0 .. exe_path.len - 4]})
     else
         try std.fmt.allocPrint(allocator, "{s}.shim", .{exe_path});
     defer allocator.free(shim_path);
 
-    // Get shim's directory for %~dp0 expansion
     const shim_dir = std.fs.path.dirnamePosix(shim_path) orelse ".";
 
-    // Read and parse the .shim file
     var config = readShimConfig(allocator, shim_path, shim_dir) catch {
+        writeStderr("Shim: could not read .shim file.\n");
         std.process.exit(1);
     };
     defer config.deinit(allocator);
 
     if (config.path.len == 0) {
+        writeStderr("Shim: .shim file has no path entry.\n");
         std.process.exit(1);
     }
 
-    // Collect user arguments (skip argv[0] which is the shim itself)
-    const user_args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, user_args);
+    const user_tail = rawUserArgsTail(allocator) catch {
+        writeStderr("Shim: could not read command line arguments.\n");
+        std.process.exit(1);
+    };
+    defer allocator.free(user_tail);
 
-    // Build argv: target_path [shim_args...] [user_args...]
-    var argv_list: std.ArrayList([]const u8) = .empty;
-    defer argv_list.deinit(allocator);
-
-    try argv_list.append(allocator, config.path);
-
-    // Append shim args if present
-    if (config.args) |shim_args| {
-        var iter = std.mem.splitSequence(u8, shim_args, " ");
-        while (iter.next()) |arg| {
-            if (arg.len > 0) {
-                try argv_list.append(allocator, arg);
-            }
-        }
+    const is_gui = isGuiApplication(allocator, config.path) catch false;
+    if (is_gui) {
+        _ = win32.FreeConsole();
     }
 
-    // Append user arguments
-    for (user_args[1..]) |arg| {
-        try argv_list.append(allocator, arg);
-    }
-
-    // Set custom environment variables from .shim file
     for (config.env_vars.items) |item| {
         const key_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, item.key);
         defer allocator.free(key_w);
@@ -361,9 +452,9 @@ pub fn main() !void {
         _ = win32.SetEnvironmentVariableW(key_w.ptr, val_w.ptr);
     }
 
-    // Spawn with Job Object and Ctrl+C handling
     const target_dir = std.fs.path.dirnamePosix(config.path) orelse ".";
-    const exit_code = spawnWithJob(allocator, argv_list.items, target_dir) catch {
+    const exit_code = spawnWithJob(allocator, config.path, config.args, user_tail, target_dir, !is_gui) catch {
+        writeStderr("Shim: failed to launch target process.\n");
         std.process.exit(1);
     };
 
