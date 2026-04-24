@@ -24,28 +24,77 @@ func SetupPersistData(appName string, persistItems []string, appCurrentDir strin
 		targetInApp := filepath.Join(appCurrentDir, item)
 		persistPath := filepath.Join(persistDir, item)
 
-		// If the data already exists in the app directory but not in persist,
-		// move it to persist first (so it survives updates).
-		if fi, err := os.Stat(targetInApp); err == nil && fi.IsDir() {
-			if _, err := os.Stat(persistPath); err != nil {
-				// Move the existing data to persist.
-				if err := os.Rename(targetInApp, persistPath); err != nil {
-					return fmt.Errorf("failed to move %s to persist: %w", item, err)
+		// Determine if this item is a file or directory.
+		isDir := true
+		if fi, err := os.Stat(persistPath); err == nil {
+			isDir = fi.IsDir()
+		} else if fi, err := os.Stat(targetInApp); err == nil {
+			isDir = fi.IsDir()
+		} else if filepath.Ext(item) != "" {
+			// Heuristic: items with extensions are treated as files.
+			isDir = false
+		}
+
+		if isDir {
+			// If the data already exists in the app directory but not in persist,
+			// move it to persist first (so it survives updates).
+			if fi, err := os.Stat(targetInApp); err == nil && fi.IsDir() {
+				if _, err := os.Stat(persistPath); err != nil {
+					if err := os.Rename(targetInApp, persistPath); err != nil {
+						return fmt.Errorf("failed to move %s to persist: %w", item, err)
+					}
 				}
+			}
+
+			if err := os.MkdirAll(persistPath, 0o755); err != nil {
+				return fmt.Errorf("failed to create persist directory %s: %w", persistPath, err)
+			}
+		} else {
+			// Ensure parent directory exists for files.
+			parentDir := filepath.Dir(persistPath)
+			if err := os.MkdirAll(parentDir, 0o755); err != nil {
+				return fmt.Errorf("failed to create persist parent %s: %w", parentDir, err)
+			}
+
+			// If file data exists in app but not in persist, move it first.
+			if fi, err := os.Stat(targetInApp); err == nil && !fi.IsDir() {
+				if _, err := os.Stat(persistPath); os.IsNotExist(err) {
+					if err := os.Rename(targetInApp, persistPath); err != nil {
+						return fmt.Errorf("failed to move %s to persist: %w", item, err)
+					}
+				}
+			}
+
+			// Ensure the persist file exists (create empty file if needed).
+			f, err := os.OpenFile(persistPath, os.O_CREATE|os.O_RDWR, 0o644)
+			if err != nil {
+				return fmt.Errorf("failed to create persist file %s: %w", persistPath, err)
+			}
+			if err := f.Close(); err != nil {
+				return fmt.Errorf("failed to close persist file %s: %w", persistPath, err)
 			}
 		}
 
-		// Create the persist directory if it doesn't exist.
-		if err := os.MkdirAll(persistPath, 0o755); err != nil {
-			return fmt.Errorf("failed to create persist path %s: %w", persistPath, err)
-		}
-
-		// Remove the existing item in the app directory (could be a junction or directory).
+		// Remove the existing item in the app directory (could be a junction, directory, or file).
 		_ = os.RemoveAll(targetInApp)
 
-		// Create a junction from the app directory to the persist directory.
-		if err := CreateJunction(targetInApp, persistPath); err != nil {
-			return fmt.Errorf("failed to create persist junction for %s: %w", item, err)
+		if err := os.MkdirAll(filepath.Dir(targetInApp), 0o755); err != nil {
+			return fmt.Errorf("failed to create app parent path %s: %w", filepath.Dir(targetInApp), err)
+		}
+
+		if isDir {
+			// Create a junction from the app directory to the persist directory.
+			if err := CreateJunction(targetInApp, persistPath); err != nil {
+				return fmt.Errorf("failed to create persist junction for %s: %w", item, err)
+			}
+		} else {
+			// Create a hardlink from the app directory to the persist file.
+			if err := os.Link(persistPath, targetInApp); err != nil {
+				// Fall back to symlink to preserve persistence semantics.
+				if symlinkErr := os.Symlink(persistPath, targetInApp); symlinkErr != nil {
+					return fmt.Errorf("failed to create persist link for %s (hardlink: %v, symlink: %w)", item, err, symlinkErr)
+				}
+			}
 		}
 	}
 

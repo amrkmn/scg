@@ -11,8 +11,9 @@ import (
 )
 
 type UninstallOptions struct {
-	Scope scoop.InstallScope
-	Purge bool
+	Scope  scoop.InstallScope
+	Purge  bool
+	DryRun bool
 }
 
 type UninstallResult struct {
@@ -42,7 +43,7 @@ func (s *UninstallService) Uninstall(apps []string, opts UninstallOptions) []Uni
 
 	for _, app := range apps {
 		start := time.Now()
-		result := s.uninstallSingle(app, opts)
+		result := s.UninstallSingle(app, opts)
 		result.Duration = time.Since(start)
 		results = append(results, result)
 
@@ -57,7 +58,7 @@ func (s *UninstallService) Uninstall(apps []string, opts UninstallOptions) []Uni
 	return results
 }
 
-func (s *UninstallService) uninstallSingle(appInput string, opts UninstallOptions) UninstallResult {
+func (s *UninstallService) UninstallSingle(appInput string, opts UninstallOptions) UninstallResult {
 	result := UninstallResult{App: appInput}
 
 	paths := scoop.ResolvePaths(opts.Scope)
@@ -100,13 +101,17 @@ func (s *UninstallService) uninstallSingle(appInput string, opts UninstallOption
 
 	preUninstall := joinAnyString(m.PreUninstall)
 	if preUninstall != "" {
-		logHookStepStart("Running pre_uninstall script")
-		if err := install.RunHook("pre_uninstall", preUninstall, currentLink, envVars); err != nil {
-			logHookStepError()
-			result.Error = fmt.Errorf("pre_uninstall hook failed: %w", err)
-			return result
+		if opts.DryRun {
+			log("[dry-run] Would run pre_uninstall script")
+		} else {
+			logHookStepStart("Running pre_uninstall script")
+			if err := install.RunHook("pre_uninstall", preUninstall, currentLink, envVars); err != nil {
+				logHookStepError()
+				result.Error = fmt.Errorf("pre_uninstall hook failed: %w", err)
+				return result
+			}
+			logHookStepDone("Finished running pre_uninstall script.")
 		}
-		logHookStepDone("Finished running pre_uninstall script.")
 	}
 
 	runningProcs, err := install.FindRunningProcesses(currentLink)
@@ -117,18 +122,24 @@ func (s *UninstallService) uninstallSingle(appInput string, opts UninstallOption
 		for _, p := range runningProcs {
 			s.ctx.GetLogger().Warn(fmt.Sprintf("  - %s (PID %d)", p.Name, p.PID))
 		}
-		result.Error = fmt.Errorf("%s is currently running", appInput)
-		return result
+		if !opts.DryRun {
+			result.Error = fmt.Errorf("%s is currently running", appInput)
+			return result
+		}
 	}
 
 	if m.Uninstaller != nil {
-		logHookStepStart("Running uninstaller script")
-		if err := install.RunInstallerHook("uninstaller", m.Uninstaller, currentLink, envVars); err != nil {
-			logHookStepError()
-			result.Error = fmt.Errorf("uninstaller failed: %w", err)
-			return result
+		if opts.DryRun {
+			log("[dry-run] Would run uninstaller script")
+		} else {
+			logHookStepStart("Running uninstaller script")
+			if err := install.RunInstallerHook("uninstaller", m.Uninstaller, currentLink, envVars); err != nil {
+				logHookStepError()
+				result.Error = fmt.Errorf("uninstaller failed: %w", err)
+				return result
+			}
+			logHookStepDone("Finished running uninstaller script.")
 		}
-		logHookStepDone("Finished running uninstaller script.")
 	}
 
 	shims := collectUninstallShims(m, arch)
@@ -137,8 +148,12 @@ func (s *UninstallService) uninstallSingle(appInput string, opts UninstallOption
 			log(fmt.Sprintf("Removing shim '%s.shim'.", def.Name))
 			log(fmt.Sprintf("Removing shim '%s.exe'.", def.Name))
 		}
-		if err := install.RemoveShims(shims, opts.Scope); err != nil {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to remove some shims: %v", err))
+		if opts.DryRun {
+			log("[dry-run] Would remove shims")
+		} else {
+			if err := install.RemoveShims(shims, opts.Scope); err != nil {
+				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to remove some shims: %v", err))
+			}
 		}
 	}
 
@@ -151,8 +166,12 @@ func (s *UninstallService) uninstallSingle(appInput string, opts UninstallOption
 			}
 			log(fmt.Sprintf("Removing shortcut %s", displayPath(shortcutPath)))
 		}
-		if err := install.RemoveStartMenuShortcuts(shortcuts, opts.Scope); err != nil {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to remove shortcuts: %v", err))
+		if opts.DryRun {
+			log("[dry-run] Would remove start menu shortcuts")
+		} else {
+			if err := install.RemoveStartMenuShortcuts(shortcuts, opts.Scope); err != nil {
+				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to remove shortcuts: %v", err))
+			}
 		}
 	}
 
@@ -167,16 +186,24 @@ func (s *UninstallService) uninstallSingle(appInput string, opts UninstallOption
 		for _, p := range envAddPath {
 			log(fmt.Sprintf("Removing %s from %s path.", displayPath(p), pathTarget))
 		}
-		if err := install.RemoveFromPath(envAddPath, opts.Scope); err != nil {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to remove from PATH: %v", err))
+		if opts.DryRun {
+			log("[dry-run] Would remove from PATH")
+		} else {
+			if err := install.RemoveFromPath(envAddPath, opts.Scope); err != nil {
+				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to remove from PATH: %v", err))
+			}
 		}
 	}
 
 	envSet := collectUninstallEnvSet(m, arch)
 	for key := range envSet {
 		log(fmt.Sprintf("Removing environment variable '%s'.", key))
-		if err := install.RemoveEnvVar(key, opts.Scope); err != nil {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to remove env var %s: %v", key, err))
+		if opts.DryRun {
+			log("[dry-run] Would remove environment variable")
+		} else {
+			if err := install.RemoveEnvVar(key, opts.Scope); err != nil {
+				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to remove env var %s: %v", key, err))
+			}
 		}
 	}
 
@@ -188,8 +215,12 @@ func (s *UninstallService) uninstallSingle(appInput string, opts UninstallOption
 			continue
 		}
 		if fi.Mode()&os.ModeSymlink != 0 || install.IsJunction(targetInApp) {
-			install.RemoveReadOnly(targetInApp)
-			_ = os.Remove(targetInApp)
+			if opts.DryRun {
+				log(fmt.Sprintf("[dry-run] Would remove persist junction %s", displayPath(targetInApp)))
+			} else {
+				install.RemoveReadOnly(targetInApp)
+				_ = os.Remove(targetInApp)
+			}
 		}
 	}
 
@@ -198,38 +229,59 @@ func (s *UninstallService) uninstallSingle(appInput string, opts UninstallOption
 		entryPath := filepath.Join(appDir, entry.Name())
 		if entry.Name() != version && entry.Name() != "current" {
 			log(fmt.Sprintf("Removing older version (%s).", entry.Name()))
-			if err := os.RemoveAll(entryPath); err != nil {
-				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to remove %s: %v", entry.Name(), err))
+			if opts.DryRun {
+				log(fmt.Sprintf("[dry-run] Would remove older version %s", entry.Name()))
+			} else {
+				if err := os.RemoveAll(entryPath); err != nil {
+					s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to remove %s: %v", entry.Name(), err))
+				}
 			}
 		}
 	}
 
 	postUninstall := joinAnyString(m.PostUninstall)
 	if postUninstall != "" {
-		logHookStepStart("Running post_uninstall script")
-		if err := install.RunHook("post_uninstall", postUninstall, currentLink, envVars); err != nil {
-			logHookStepError()
-			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: post_uninstall hook failed: %v", err))
+		if opts.DryRun {
+			log("[dry-run] Would run post_uninstall script")
+		} else {
+			logHookStepStart("Running post_uninstall script")
+			if err := install.RunHook("post_uninstall", postUninstall, currentLink, envVars); err != nil {
+				logHookStepError()
+				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: post_uninstall hook failed: %v", err))
+			}
+			logHookStepDone("Finished running post_uninstall script.")
 		}
-		logHookStepDone("Finished running post_uninstall script.")
 	}
 
-	install.RemoveReadOnly(currentLink)
-	_ = os.Remove(currentLink)
+	if opts.DryRun {
+		log(fmt.Sprintf("[dry-run] Would remove junction %s", displayPath(currentLink)))
+		log(fmt.Sprintf("[dry-run] Would remove version dir %s", displayPath(versionDir)))
+		entries, _ := os.ReadDir(appDir)
+		if len(entries) <= 2 { // version dir + current
+			log(fmt.Sprintf("[dry-run] Would remove app dir %s", displayPath(appDir)))
+		}
+	} else {
+		install.RemoveReadOnly(currentLink)
+		_ = os.Remove(currentLink)
 
-	if err := os.RemoveAll(versionDir); err != nil {
-		s.ctx.GetLogger().Warn(fmt.Sprintf("Couldn't remove '%s'; it may be in use. (%v)", displayPath(versionDir), err))
-	}
+		if err := os.RemoveAll(versionDir); err != nil {
+			s.ctx.GetLogger().Warn(fmt.Sprintf("Couldn't remove '%s'; it may be in use. (%v)", displayPath(versionDir), err))
+		}
 
-	remaining, _ := os.ReadDir(appDir)
-	if len(remaining) == 0 {
-		_ = os.RemoveAll(appDir)
+		remaining, _ := os.ReadDir(appDir)
+		if len(remaining) == 0 {
+			_ = os.RemoveAll(appDir)
+		}
 	}
 
 	if opts.Purge {
 		log("Removing persisted data.")
-		if err := install.RemovePersistData(appInput, opts.Scope, true); err != nil {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("Couldn't remove '%s'; it may be in use. (%v)", displayPath(persistDir), err))
+		if opts.DryRun {
+			log(fmt.Sprintf("[dry-run] Would remove persisted data in %s", displayPath(persistDir)))
+		} else {
+			if err := install.RemovePersistData(appInput, opts.Scope, true); err != nil {
+				s.ctx.GetLogger().Warn(fmt.Sprintf("Couldn't remove '%s'; it may be in use. (%v)", displayPath(persistDir), err))
+			}
 		}
 	}
 

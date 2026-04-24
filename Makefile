@@ -2,20 +2,16 @@
 VERSION = 0.1.0
 
 # Build targets
-build:
-	$(MAKE) build-shim
+build: build-shim
 	go build -ldflags "-X main.Version=$(VERSION) -s -w" -o dist/scg.exe ./cmd
 
-build-amd64:
-	$(MAKE) build-shim-amd64
+build-amd64: build-shim-amd64
 	GOOS=windows GOARCH=amd64 go build -ldflags "-X main.Version=$(VERSION) -s -w" -o dist/scg-amd64.exe ./cmd
 
-build-386:
-	$(MAKE) build-shim-386
+build-386: build-shim-386
 	GOOS=windows GOARCH=386 go build -ldflags "-X main.Version=$(VERSION) -s -w" -o dist/scg-386.exe ./cmd
 
-build-arm64:
-	$(MAKE) build-shim-arm64
+build-arm64: build-shim-arm64
 	GOOS=windows GOARCH=arm64 go build -ldflags "-X main.Version=$(VERSION) -s -w" -o dist/scg-arm64.exe ./cmd
 
 build-all: build-amd64 build-386 build-arm64
@@ -64,9 +60,6 @@ check: fmt lint test
 
 run:
 	go run ./cmd $(ARGS)
-
-benchmark-search:
-	hyperfine --warmup 2 "dist/scg.exe search $(QUERY)" "sfsu search $(QUERY)"
 
 # CI: release helpers
 tags:

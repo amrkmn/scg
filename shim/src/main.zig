@@ -55,24 +55,51 @@ fn appendPathForCommandLine(buf: *std.ArrayList(u8), allocator: std.mem.Allocato
     try buf.append(allocator, '"');
 }
 
-fn isGuiApplication(allocator: std.mem.Allocator, path: []const u8) !bool {
-    const path_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, path);
+fn isGuiApplication(path: []const u8) bool {
+    const allocator = std.heap.page_allocator;
+    const path_w = std.unicode.utf8ToUtf16LeAllocZ(allocator, path) catch return false;
     defer allocator.free(path_w);
 
-    const unquoted = try allocator.dupeZ(u16, path_w);
-    defer allocator.free(unquoted);
-    _ = win32.PathUnquoteSpacesW(unquoted.ptr);
-
-    var file_info: win32.SHFILEINFOW = std.mem.zeroes(win32.SHFILEINFOW);
-    const exe_type = win32.SHGetFileInfoW(
-        unquoted.ptr,
-        0,
-        &file_info,
-        @sizeOf(win32.SHFILEINFOW),
-        win32.SHGFI_EXETYPE,
+    const handle = win32.CreateFileW(
+        path_w.ptr,
+        win32.GENERIC_READ,
+        win32.FILE_SHARE_READ,
+        null,
+        win32.OPEN_EXISTING,
+        win32.FILE_ATTRIBUTE_NORMAL,
+        null,
     );
-    if (exe_type == 0) return false;
-    return (@as(u16, @truncate(exe_type >> 16)) != 0);
+    const INVALID_HANDLE_VALUE = @as(win32.HANDLE, @ptrFromInt(~@as(usize, 0)));
+    if (handle == INVALID_HANDLE_VALUE) return false;
+    defer _ = win32.CloseHandle(handle);
+
+    var read: win32.DWORD = 0;
+
+    // Verify MZ signature at offset 0.
+    var mz_buf: [2]u8 = undefined;
+    if (win32.ReadFile(handle, &mz_buf, 2, &read, null) == 0 or read != 2) return false;
+    if (std.mem.readInt(u16, &mz_buf, .little) != 0x5A4D) return false;
+
+    // Read e_lfanew at offset 0x3C.
+    _ = win32.SetFilePointer(handle, 0x3C, null, win32.FILE_BEGIN);
+    var e_lfanew_buf: [4]u8 = undefined;
+    if (win32.ReadFile(handle, &e_lfanew_buf, 4, &read, null) == 0 or read != 4) return false;
+    const e_lfanew = std.mem.readInt(u32, &e_lfanew_buf, .little);
+
+    // Verify PE signature at e_lfanew.
+    _ = win32.SetFilePointer(handle, @intCast(e_lfanew), null, win32.FILE_BEGIN);
+    var pe_sig: [4]u8 = undefined;
+    if (win32.ReadFile(handle, &pe_sig, 4, &read, null) == 0 or read != 4) return false;
+    if (std.mem.readInt(u32, &pe_sig, .little) != 0x00004550) return false;
+
+    // Subsystem is at PE signature (4) + COFF header (20) + optional header offset 68.
+    _ = win32.SetFilePointer(handle, @intCast(e_lfanew + 4 + 20 + 68), null, win32.FILE_BEGIN);
+    var sub_buf: [2]u8 = undefined;
+    if (win32.ReadFile(handle, &sub_buf, 2, &read, null) == 0 or read != 2) return false;
+    const subsystem = std.mem.readInt(u16, &sub_buf, .little);
+
+    // IMAGE_SUBSYSTEM_WINDOWS_GUI = 2
+    return subsystem == 2;
 }
 
 fn rawUserArgsTail(allocator: std.mem.Allocator) ![]u8 {
@@ -439,7 +466,7 @@ pub fn main() !void {
     };
     defer allocator.free(user_tail);
 
-    const is_gui = isGuiApplication(allocator, config.path) catch false;
+    const is_gui = isGuiApplication(config.path);
     if (is_gui) {
         _ = win32.FreeConsole();
     }

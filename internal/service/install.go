@@ -24,6 +24,9 @@ type InstallOptions struct {
 	Arch             string // Force architecture (64bit, 32bit, arm64)
 	Proxy            string // Proxy URL for downloads
 	AsDependencyFlow bool   // Internal: compact/dependency-style logs
+	DryRun           bool   // Simulate without side effects
+	SkipDownload     bool   // Use already-cached file (for update flow)
+	FromBucket       string // Original bucket (e.g. from install.json); suppresses multi-bucket warning
 }
 
 // InstallResult holds the outcome of installing a single app.
@@ -102,9 +105,16 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 		opts.Scope = scoop.ScopeUser
 	}
 
-	// Find the manifest.
-	installed, bucket := s.manifests.FindManifestPair(appInput)
 	_, appName := parseBucketAndApp(appInput)
+
+	// If we know the original bucket, use it to find the manifest.
+	lookupName := appInput
+	if opts.FromBucket != "" {
+		lookupName = fmt.Sprintf("%s/%s", opts.FromBucket, appName)
+	}
+
+	// Find the manifest.
+	installed, bucket := s.manifests.FindManifestPair(lookupName)
 
 	// Determine the manifest to install from.
 	var m *scoop.Manifest
@@ -126,7 +136,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 
 	// Warn when multiple buckets contain the same app and no bucket was explicitly requested.
 	requestedBucket, _ := parseBucketAndApp(appInput)
-	if requestedBucket == "" {
+	if requestedBucket == "" && opts.FromBucket == "" {
 		allMatches := s.manifests.FindAllManifests(appInput)
 		matchCount := 0
 		for _, fm := range allMatches {
@@ -200,32 +210,57 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 		return result
 	}
 
-	// Download.
+	// Download (or reuse cached file).
 	dm := install.NewDownloadManager(opts.Scope, s.ctx.GetVerbose())
+	var dlResult *install.DownloadResult
 
-	// Determine if a download will actually happen (vs cache hit).
-	willDownload := opts.NoCache
-	cachePath := dm.CachePath(appName, m.Version, dlURL)
-	if !willDownload {
+	if opts.SkipDownload {
 		if existingPath, ok := dm.FindCachedPath(appName, m.Version, dlURL); ok {
-			cachePath = existingPath
+			dlResult = &install.DownloadResult{
+				CachePath:  existingPath,
+				Downloaded: false,
+				UsedAria2:  false,
+			}
+			log("Loading " + filepath.Base(existingPath) + " from cache")
+		} else if opts.DryRun {
+			// In dry-run the pre-download phase only simulated the download;
+			// create a fake result so the rest of the flow can simulate too.
+			cachePath := dm.CachePath(appName, m.Version, dlURL)
+			dlResult = &install.DownloadResult{
+				CachePath:  cachePath,
+				Downloaded: false,
+				UsedAria2:  false,
+			}
+			log("[dry-run] Would load " + filepath.Base(cachePath) + " from cache")
 		} else {
-			willDownload = true
+			result.Error = fmt.Errorf("cached file not found for %s (%s)", appName, m.Version)
+			return result
 		}
-	}
-	if !willDownload {
-		log("Loading " + filepath.Base(cachePath) + " from cache")
-	}
+	} else {
+		// Determine if a download will actually happen (vs cache hit).
+		willDownload := opts.NoCache
+		cachePath := dm.CachePath(appName, m.Version, dlURL)
+		if !willDownload {
+			if existingPath, ok := dm.FindCachedPath(appName, m.Version, dlURL); ok {
+				cachePath = existingPath
+			} else {
+				willDownload = true
+			}
+		}
+		if !willDownload {
+			log("Loading " + filepath.Base(cachePath) + " from cache")
+		}
 
-	dlResult, err := dm.Download(appName, m.Version, dlURL, !opts.NoCache, opts.Proxy)
-	if err != nil {
-		result.Error = fmt.Errorf("download failed: %w", err)
-		return result
-	}
+		dlResult, err = dm.Download(appName, m.Version, dlURL, !opts.NoCache, opts.Proxy)
+		if err != nil {
+			result.Error = fmt.Errorf("download failed: %w", err)
+			return result
+		}
 
-	if dlResult.Downloaded {
-		if !dlResult.UsedAria2 {
-			s.ctx.GetLogger().Log(fmt.Sprintf("Downloaded %s", filepath.Base(dlResult.CachePath)))
+		if dlResult.Downloaded {
+			if !dlResult.UsedAria2 {
+				s.ctx.GetLogger().Log(fmt.Sprintf("Downloaded %s", filepath.Base(dlResult.CachePath)))
+			}
 		}
 	}
 
@@ -284,70 +319,98 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 			InnoSetup: isManifestInnoSetup(m, arch),
 			MSI:       isManifestMSI(dlURL),
 		}
-		logStepStart("Extracting")
-		if err := extractor.Extract(dlResult.CachePath, versionDir, extractOpts); err != nil {
-			logStepError()
-			result.Error = fmt.Errorf("extraction failed: %w", err)
-			return result
+		if opts.DryRun {
+			log(fmt.Sprintf("[dry-run] Would extract %s to %s", filepath.Base(dlResult.CachePath), displayPath(versionDir)))
+		} else {
+			logStepStart("Extracting")
+			if err := extractor.Extract(dlResult.CachePath, versionDir, extractOpts); err != nil {
+				logStepError()
+				result.Error = fmt.Errorf("extraction failed: %w", err)
+				return result
+			}
+			logStepDone()
+			log("Extracted to " + versionDir)
 		}
-		logStepDone()
-		log("Extracted to " + versionDir)
 	} else {
-		if err := os.MkdirAll(versionDir, 0o755); err != nil {
-			result.Error = fmt.Errorf("failed to create version dir: %w", err)
-			return result
-		}
-		dst := filepath.Join(versionDir, downloadFile)
-		if err := copyFile(dlResult.CachePath, dst); err != nil {
-			result.Error = fmt.Errorf("failed to stage installer payload: %w", err)
-			return result
+		if opts.DryRun {
+			log(fmt.Sprintf("[dry-run] Would create directory %s and copy %s", displayPath(versionDir), filepath.Base(downloadFile)))
+		} else {
+			if err := os.MkdirAll(versionDir, 0o755); err != nil {
+				result.Error = fmt.Errorf("failed to create version dir: %w", err)
+				return result
+			}
+			dst := filepath.Join(versionDir, downloadFile)
+			if err := copyFile(dlResult.CachePath, dst); err != nil {
+				result.Error = fmt.Errorf("failed to stage installer payload: %w", err)
+				return result
+			}
 		}
 	}
 
 	// Handle extract_to: move extracted contents into a subdirectory.
 	if et := getArchString(m, "extract_to", arch); et != "" {
 		targetDir := filepath.Join(versionDir, et)
-		if err := install.MoveContents(versionDir, targetDir); err != nil {
-			result.Error = fmt.Errorf("extract_to failed: %w", err)
-			return result
+		if opts.DryRun {
+			log(fmt.Sprintf("[dry-run] Would move contents to %s", displayPath(targetDir)))
+		} else {
+			if err := install.MoveContents(versionDir, targetDir); err != nil {
+				result.Error = fmt.Errorf("extract_to failed: %w", err)
+				return result
+			}
 		}
 	}
 
 	// Flatten extract_dir if specified.
 	if ed := getArchString(m, "extract_dir", arch); ed != "" {
-		if err := install.FlattenExtractDir(versionDir, ed); err != nil {
-			result.Error = fmt.Errorf("extract_dir failed: %w", err)
-			return result
+		if opts.DryRun {
+			log(fmt.Sprintf("[dry-run] Would flatten extract_dir %s", ed))
+		} else {
+			if err := install.FlattenExtractDir(versionDir, ed); err != nil {
+				result.Error = fmt.Errorf("extract_dir failed: %w", err)
+				return result
+			}
 		}
 	}
 
 	// Run pre_install hook.
 	if preInstall != "" {
-		logHookStepStart("Running pre_install script")
-		if err := install.RunHook("pre_install", preInstall, currentDir, preHookEnv); err != nil {
-			logHookStepError()
-			result.Error = fmt.Errorf("pre_install hook failed: %w", err)
-			return result
+		if opts.DryRun {
+			log("[dry-run] Would run pre_install script")
+		} else {
+			logHookStepStart("Running pre_install script")
+			if err := install.RunHook("pre_install", preInstall, currentDir, preHookEnv); err != nil {
+				logHookStepError()
+				result.Error = fmt.Errorf("pre_install hook failed: %w", err)
+				return result
+			}
+			logHookStepDone("Finished running pre_install script.")
 		}
-		logHookStepDone("Finished running pre_install script.")
 	}
 
 	// Run installer hook.
 	if m.Installer != nil {
-		logHookStepStart("Running installer script")
-		if err := install.RunInstallerHook("installer", m.Installer, currentDir, preHookEnv); err != nil {
-			logHookStepError()
-			result.Error = fmt.Errorf("installer failed: %w", err)
-			return result
+		if opts.DryRun {
+			log("[dry-run] Would run installer script")
+		} else {
+			logHookStepStart("Running installer script")
+			if err := install.RunInstallerHook("installer", m.Installer, currentDir, preHookEnv); err != nil {
+				logHookStepError()
+				result.Error = fmt.Errorf("installer failed: %w", err)
+				return result
+			}
+			logHookStepDone("Finished running installer script.")
 		}
-		logHookStepDone("Finished running installer script.")
 	}
 
 	// Create current/ junction.
 	log(fmt.Sprintf("Linking %s → %s", displayPath(currentLink), displayPath(versionDir)))
-	if err := install.CreateJunction(currentLink, versionDir); err != nil {
-		result.Error = fmt.Errorf("failed to create junction: %w", err)
-		return result
+	if opts.DryRun {
+		log("[dry-run] Would create junction")
+	} else {
+		if err := install.CreateJunction(currentLink, versionDir); err != nil {
+			result.Error = fmt.Errorf("failed to create junction: %w", err)
+			return result
+		}
 	}
 
 	// Create shims.
@@ -355,12 +418,18 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 		for _, w := range install.DetectShimOverwrites(binDefs, currentLink, opts.Scope) {
 			s.ctx.GetLogger().Warn("Warning: " + w)
 		}
-		if err := install.CreateShims(binDefs, currentLink, opts.Scope); err != nil {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: shim creation: %v", err))
-			// Continue - best effort.
-		} else {
+		if opts.DryRun {
 			for _, bin := range binDefs {
-				log(fmt.Sprintf("Creating shim for '%s'.", bin.Name))
+				log(fmt.Sprintf("[dry-run] Would create shim for '%s'.", bin.Name))
+			}
+		} else {
+			if err := install.CreateShims(binDefs, currentLink, opts.Scope); err != nil {
+				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: shim creation: %v", err))
+				// Continue - best effort.
+			} else {
+				for _, bin := range binDefs {
+					log(fmt.Sprintf("Creating shim for '%s'.", bin.Name))
+				}
 			}
 		}
 	}
@@ -368,17 +437,27 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	// Add to PATH.
 	pathChanged := false
 	if len(envPaths) > 0 {
-		pathAdditions, err := install.AddToPathWithResultNoBroadcast(envPaths, opts.Scope)
-		if err != nil {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: PATH update: %v", err))
-		} else {
-			pathChanged = len(pathAdditions) > 0
+		if opts.DryRun {
 			pathTarget := "your"
 			if opts.Scope == scoop.ScopeGlobal {
 				pathTarget = "global"
 			}
-			for _, p := range pathAdditions {
-				log(fmt.Sprintf("Adding %s to %s path.", displayPath(p), pathTarget))
+			for _, p := range envPaths {
+				log(fmt.Sprintf("[dry-run] Would add %s to %s path.", displayPath(p), pathTarget))
+			}
+		} else {
+			pathAdditions, err := install.AddToPathWithResultNoBroadcast(envPaths, opts.Scope)
+			if err != nil {
+				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: PATH update: %v", err))
+			} else {
+				pathChanged = len(pathAdditions) > 0
+				pathTarget := "your"
+				if opts.Scope == scoop.ScopeGlobal {
+					pathTarget = "global"
+				}
+				for _, p := range pathAdditions {
+					log(fmt.Sprintf("Adding %s to %s path.", displayPath(p), pathTarget))
+				}
 			}
 		}
 	}
@@ -388,8 +467,12 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 		for _, item := range persistItems {
 			log("Persisting " + item)
 		}
-		if err := install.SetupPersistData(appName, persistItems, currentLink, opts.Scope); err != nil {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: persist setup: %v", err))
+		if opts.DryRun {
+			log("[dry-run] Would setup persist data")
+		} else {
+			if err := install.SetupPersistData(appName, persistItems, currentLink, opts.Scope); err != nil {
+				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: persist setup: %v", err))
+			}
 		}
 	}
 
@@ -398,8 +481,12 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 		for _, shortcut := range shortcuts {
 			log(fmt.Sprintf("Creating shortcut for %s (%s)", shortcut.Name, filepath.Base(filepath.FromSlash(shortcut.Target))))
 		}
-		if err := install.CreateStartMenuShortcuts(shortcuts, currentLink, opts.Scope); err != nil {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: shortcuts: %v", err))
+		if opts.DryRun {
+			log("[dry-run] Would create start menu shortcuts")
+		} else {
+			if err := install.CreateStartMenuShortcuts(shortcuts, currentLink, opts.Scope); err != nil {
+				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: shortcuts: %v", err))
+			}
 		}
 	}
 
@@ -410,48 +497,60 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 			log("Set environment variable " + k + "=" + v)
 		}
 
-		if err := install.SetEnvVarsNoBroadcast(envVars, opts.Scope); err != nil {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: env set batch: %v", err))
-			for k, v := range envVars {
-				if err := install.SetEnvVarNoBroadcast(k, v, opts.Scope); err != nil {
-					s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: env set %s: %v", k, err))
-					continue
+		if opts.DryRun {
+			log("[dry-run] Would set environment variables")
+		} else {
+			if err := install.SetEnvVarsNoBroadcast(envVars, opts.Scope); err != nil {
+				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: env set batch: %v", err))
+				for k, v := range envVars {
+					if err := install.SetEnvVarNoBroadcast(k, v, opts.Scope); err != nil {
+						s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: env set %s: %v", k, err))
+						continue
+					}
+					envChanged = true
 				}
+			} else {
 				envChanged = true
 			}
-		} else {
-			envChanged = true
 		}
 	}
 
-	if pathChanged || envChanged {
+	if !opts.DryRun && (pathChanged || envChanged) {
 		install.BroadcastEnvironmentChange()
 	}
 
 	// Run post_install hook.
 	if postInstall != "" {
-		logHookStepStart("Running post_install script")
-		if err := install.RunHook("post_install", postInstall, currentLink, expandedEnvVars); err != nil {
-			logHookStepError()
-			result.Error = fmt.Errorf("post_install hook failed: %w", err)
-			return result
+		if opts.DryRun {
+			log("[dry-run] Would run post_install script")
+		} else {
+			logHookStepStart("Running post_install script")
+			if err := install.RunHook("post_install", postInstall, currentLink, expandedEnvVars); err != nil {
+				logHookStepError()
+				result.Error = fmt.Errorf("post_install hook failed: %w", err)
+				return result
+			}
+			logHookStepDone("Finished running post_install script.")
 		}
-		logHookStepDone("Finished running post_install script.")
 	}
 
 	// Save install.json.
 	log("Saved metadata (install.json, manifest.json)")
-	info := &install.InstallInfo{
-		Architecture: arch,
-		Bucket:       bucketName,
-	}
-	if err := install.WriteInstallInfo(filepath.Join(versionDir, "install.json"), info); err != nil {
-		s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to save install.json: %v", err))
-	}
+	if opts.DryRun {
+		log("[dry-run] Would write install.json and manifest.json")
+	} else {
+		info := &install.InstallInfo{
+			Architecture: arch,
+			Bucket:       bucketName,
+		}
+		if err := install.WriteInstallInfo(filepath.Join(versionDir, "install.json"), info); err != nil {
+			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to save install.json: %v", err))
+		}
 
-	// Save manifest.json.
-	if err := install.WriteManifest(filepath.Join(versionDir, "manifest.json"), m); err != nil {
-		s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to save manifest.json: %v", err))
+		// Save manifest.json.
+		if err := install.WriteManifest(filepath.Join(versionDir, "manifest.json"), m); err != nil {
+			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to save manifest.json: %v", err))
+		}
 	}
 
 	// Show manifest notes.

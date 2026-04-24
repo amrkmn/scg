@@ -197,18 +197,17 @@ func RemoveShims(shims []ShimDef, scope scoop.InstallScope) error {
 }
 
 // writeShimExe copies the shim executable to the target path.
-// It first tries to use scoop's own shim.exe (for compatibility),
-// then falls back to our embedded Zig-built shim.
+// It prefers our embedded Zig-built shim, then falls back to scoop's shim.
 func writeShimExe(destPath string) error {
-	// Try scoop's shim first (for compatibility with existing installations).
+	// Prefer our embedded shim.
+	if len(shimExe) > 0 {
+		return os.WriteFile(destPath, shimExe, 0o755)
+	}
+
+	// Fall back to scoop's shim.
 	scoopShimPath := findScoopShim()
 	if scoopShimPath != "" {
 		return copyFile(scoopShimPath, destPath)
-	}
-
-	// Fall back to our embedded shim.
-	if len(shimExe) > 0 {
-		return os.WriteFile(destPath, shimExe, 0o755)
 	}
 
 	return fmt.Errorf("no shim executable available")

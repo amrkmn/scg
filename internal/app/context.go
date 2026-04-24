@@ -23,6 +23,7 @@ type Services struct {
 	Cache       *service.CacheService
 	Installer   *service.InstallService
 	Uninstaller *service.UninstallService
+	Updater     *service.UpdateService
 }
 
 // NewContext constructs a fully wired Context with all services initialised.
@@ -44,6 +45,7 @@ func NewContext(version string, verbose bool) *Context {
 		Cache:       service.NewCacheService(ctx),
 		Installer:   service.NewInstallService(ctx),
 		Uninstaller: service.NewUninstallService(ctx),
+		Updater:     service.NewUpdateService(ctx),
 	}
 	return ctx
 }
