@@ -1,6 +1,6 @@
 module go.noz.one/scg
 
-go 1.22
+go 1.26
 
 require (
 	github.com/fatih/color v1.17.0
