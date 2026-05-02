@@ -35,11 +35,6 @@ func NewCleanupCommand() *cobra.Command {
 				Verbose: flagVerbose,
 			}
 
-			scope := scoop.ScopeUser
-			if flagGlobal {
-				scope = scoop.ScopeGlobal
-			}
-
 			// Determine which apps to clean.
 			var targets []service.InstalledApp
 
@@ -68,16 +63,16 @@ func NewCleanupCommand() *cobra.Command {
 				return nil
 			}
 
-			// Filter by scope.
-			var scoped []service.InstalledApp
-			for _, t := range targets {
-				if flagGlobal && t.Scope != scoop.ScopeGlobal {
-					continue
+			// Filter by scope: without --global, only clean user-scope apps.
+			// With --global, clean both user and global apps (matching Scoop behavior).
+			if !flagGlobal {
+				var userOnly []service.InstalledApp
+				for _, t := range targets {
+					if t.Scope == scoop.ScopeUser {
+						userOnly = append(userOnly, t)
+					}
 				}
-				scoped = append(scoped, t)
-			}
-			if len(scoped) > 0 {
-				targets = scoped
+				targets = userOnly
 			}
 
 			if flagDryRun {
@@ -86,7 +81,7 @@ func NewCleanupCommand() *cobra.Command {
 
 			var results []service.CleanupResult
 			for _, t := range targets {
-				result := ctx.Services.Cleanup.CleanupApp(t.Name, scope, opts)
+				result := ctx.Services.Cleanup.CleanupApp(t.Name, t.Scope, opts)
 				results = append(results, result)
 			}
 
@@ -106,7 +101,10 @@ func NewCleanupCommand() *cobra.Command {
 
 			// Clean up any remaining .download temp files.
 			if flagCache && !flagDryRun {
-				_ = ctx.Services.Cleanup.CleanupAll(scope)
+				_ = ctx.Services.Cleanup.CleanupAll(scoop.ScopeUser)
+				if flagGlobal {
+					_ = ctx.Services.Cleanup.CleanupAll(scoop.ScopeGlobal)
+				}
 			}
 
 			displayCleanupSummary(results)

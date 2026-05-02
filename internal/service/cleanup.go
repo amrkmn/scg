@@ -59,13 +59,10 @@ func (s *CleanupService) CleanupApp(appName string, scope scoop.InstallScope, op
 	paths := scoop.ResolvePaths(scope)
 	appDir := filepath.Join(paths.Apps, appName)
 
-	// Resolve current version.
-	currentLink := filepath.Join(appDir, "current")
-	resolved, err := filepath.EvalSymlinks(currentLink)
-	if err != nil {
+	currentVersion := resolveCurrentVersion(appDir, appName)
+	if currentVersion == "" {
 		return result
 	}
-	currentVersion := filepath.Base(resolved)
 
 	// List all subdirectories of the app directory.
 	entries, err := os.ReadDir(appDir)
@@ -163,6 +160,31 @@ func (s *CleanupService) CleanupApp(appName string, scope scoop.InstallScope, op
 	}
 
 	return result
+}
+
+// resolveCurrentVersion determines the current installed version of an app.
+// It follows Scoop's Select-CurrentVersion logic:
+// 1. Read the current/ junction target via os.Readlink (primary)
+// 2. Read manifest.json from the current/ directory (fallback for NO_JUNCTION)
+// Returns empty string if the version cannot be determined.
+func resolveCurrentVersion(appDir, appName string) string {
+	currentLink := filepath.Join(appDir, "current")
+
+	// Primary: read the junction/symlink target (same as readAppInfo in apps.go).
+	resolved, err := os.Readlink(currentLink)
+	if err == nil {
+		return filepath.Base(resolved)
+	}
+
+	// Fallback: read manifest.json inside the current/ directory.
+	// This handles the NO_JUNCTION case where current/ is a regular directory
+	// and also serves as a secondary source like Scoop's Select-CurrentVersion.
+	manifestPath := filepath.Join(currentLink, "manifest.json")
+	if m, err := scoop.ReadManifest(manifestPath); err == nil && m.Version != "" {
+		return m.Version
+	}
+
+	return ""
 }
 
 // CleanupAll removes .download temp files for all apps.
