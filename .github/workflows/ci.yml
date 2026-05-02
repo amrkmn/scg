@@ -35,7 +35,7 @@ jobs:
       - name: Cache Zig build
         uses: actions/cache@v4
         with:
-          path: shim/.zig-cache
+          path: .zig-cache
           key: zig-shim-${{ hashFiles('shim/src/main.zig', 'shim/build.zig') }}
           restore-keys: |
             zig-shim-
@@ -69,7 +69,7 @@ jobs:
       - name: Cache Zig build
         uses: actions/cache@v4
         with:
-          path: shim/.zig-cache
+          path: .zig-cache
           key: zig-shim-${{ hashFiles('shim/src/main.zig', 'shim/build.zig') }}
           restore-keys: |
             zig-shim-
@@ -101,7 +101,7 @@ jobs:
       - name: Cache Zig build
         uses: actions/cache@v4
         with:
-          path: shim/.zig-cache
+          path: .zig-cache
           key: zig-shim-${{ hashFiles('shim/src/main.zig', 'shim/build.zig') }}
           restore-keys: |
             zig-shim-
