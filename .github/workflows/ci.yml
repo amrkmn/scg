@@ -32,6 +32,14 @@ jobs:
         with:
           version: "0.16.0"
 
+      - name: Cache Zig build
+        uses: actions/cache@v4
+        with:
+          path: shim/.zig-cache
+          key: zig-shim-${{ runner.os }}-${{ hashFiles('shim/src/main.zig', 'shim/build.zig') }}
+          restore-keys: |
+            zig-shim-${{ runner.os }}-
+
       - name: Build
         run: make build
 
@@ -58,6 +66,14 @@ jobs:
         with:
           version: "0.16.0"
 
+      - name: Cache Zig build
+        uses: actions/cache@v4
+        with:
+          path: shim/.zig-cache
+          key: zig-shim-${{ runner.os }}-${{ hashFiles('shim/src/main.zig', 'shim/build.zig') }}
+          restore-keys: |
+            zig-shim-${{ runner.os }}-
+
       - name: Build shim
         run: make build-shim
 
@@ -81,6 +97,14 @@ jobs:
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: "0.16.0"
+
+      - name: Cache Zig build
+        uses: actions/cache@v4
+        with:
+          path: shim/.zig-cache
+          key: zig-shim-${{ runner.os }}-${{ hashFiles('shim/src/main.zig', 'shim/build.zig') }}
+          restore-keys: |
+            zig-shim-${{ runner.os }}-
 
       - name: Build shim
         run: make build-shim

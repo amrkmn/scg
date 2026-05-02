@@ -37,6 +37,14 @@ jobs:
         with:
           version: "0.16.0"
 
+      - name: Cache Zig build
+        uses: actions/cache@v4
+        with:
+          path: shim/.zig-cache
+          key: zig-shim-${{ runner.os }}-${{ hashFiles('shim/src/main.zig', 'shim/build.zig') }}
+          restore-keys: |
+            zig-shim-${{ runner.os }}-
+
       - name: Get version
         id: version
         shell: bash
