@@ -52,7 +52,7 @@ jobs:
           echo "Building version: $VERSION (binary version: $VERSION_NO_V)"
 
       - name: Build shim
-        run: make build-shim
+        run: make build-shim-${{ matrix.arch }}
 
       - name: Run tests
         run: make test
