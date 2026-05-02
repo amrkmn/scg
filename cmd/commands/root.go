@@ -22,6 +22,7 @@ It wraps the Scoop package manager with parallel operations and a clean interfac
 
 	// Disable cobra's built-in multi-shell completion command.
 	root.CompletionOptions.DisableDefaultCmd = true
+	root.SetHelpCommand(NewHelpCommand(root))
 
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 
@@ -48,6 +49,9 @@ It wraps the Scoop package manager with parallel operations and a clean interfac
 		NewUninstallCommand(),
 		NewUpdateCommand(),
 		NewCacheCommand(),
+		NewHomeCommand(),
+		NewHoldCommand(),
+		NewUnholdCommand(),
 		bucket.NewBucketCommand(),
 		newCompletionCommand(root),
 	)

@@ -10,6 +10,7 @@ import (
 type InstallInfo struct {
 	Architecture string `json:"architecture"`
 	Bucket       string `json:"bucket"`
+	Hold         bool   `json:"hold,omitempty"`
 }
 
 // WriteInstallInfo writes an InstallInfo struct as JSON to the given path.

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"go.noz.one/scg/internal/install"
 	"go.noz.one/scg/internal/scoop"
 	"go.noz.one/scg/internal/utils"
 )
@@ -131,6 +132,59 @@ func (s *AppsService) GetAppPrefix(name string, scope scoop.InstallScope) (strin
 		return "", err
 	}
 	return resolved, nil
+}
+
+// GetInstalledApp returns metadata for a specific installed app in the given scope.
+func (s *AppsService) GetInstalledApp(name string, scope scoop.InstallScope) (*InstalledApp, error) {
+	paths := scoop.ResolvePaths(scope)
+	currentLink := filepath.Join(paths.Apps, name, "current")
+	resolved, err := filepath.EvalSymlinks(currentLink)
+	if err != nil {
+		return nil, err
+	}
+
+	app := &InstalledApp{
+		Name:        name,
+		Scope:       scope,
+		AppDir:      filepath.Join(paths.Apps, name),
+		CurrentPath: resolved,
+		Version:     filepath.Base(resolved),
+	}
+
+	installPath := filepath.Join(resolved, "install.json")
+	if info, err := scoop.ReadInstallInfo(installPath); err == nil {
+		app.Bucket = info.Bucket
+		app.Held = info.Hold
+	}
+
+	if fi, err := os.Stat(resolved); err == nil {
+		app.Updated = fi.ModTime()
+	}
+
+	return app, nil
+}
+
+// SetHold sets or removes the hold flag on an installed app.
+func (s *AppsService) SetHold(name string, scope scoop.InstallScope, hold bool) error {
+	paths := scoop.ResolvePaths(scope)
+	currentLink := filepath.Join(paths.Apps, name, "current")
+	resolved, err := filepath.EvalSymlinks(currentLink)
+	if err != nil {
+		return err
+	}
+
+	installPath := filepath.Join(resolved, "install.json")
+	info, err := scoop.ReadInstallInfo(installPath)
+	if err != nil {
+		return err
+	}
+
+	info.Hold = hold
+	return install.WriteInstallInfo(installPath, &install.InstallInfo{
+		Architecture: info.Architecture,
+		Bucket:       info.Bucket,
+		Hold:         hold,
+	})
 }
 
 // InvalidateCache clears the apps cache.
