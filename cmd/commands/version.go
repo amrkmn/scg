@@ -13,7 +13,7 @@ func NewVersionCommand(version string) *cobra.Command {
 		Short: "Show the scg version",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("v%s\n", version)
+			fmt.Printf("%s\n", version)
 		},
 	}
 }

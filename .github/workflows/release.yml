@@ -46,10 +46,12 @@ jobs:
           else
             VERSION="${GITHUB_REF#refs/tags/}"
           fi
-          VERSION_NO_V="${VERSION#v}"
+          # Ensure version has 'v' prefix
+          if [[ "$VERSION" != v* ]]; then
+            VERSION="v$VERSION"
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "version_no_v=$VERSION_NO_V" >> $GITHUB_OUTPUT
-          echo "Building version: $VERSION (binary version: $VERSION_NO_V)"
+          echo "Building version: $VERSION"
 
       - name: Build shim
         run: make build-shim-${{ matrix.arch }}
@@ -59,7 +61,7 @@ jobs:
 
       - name: Build binary
         env:
-          VERSION: ${{ steps.version.outputs.version_no_v }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: make build-${{ matrix.arch }}
 
       - name: Upload artifact
