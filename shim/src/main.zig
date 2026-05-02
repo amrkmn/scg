@@ -170,7 +170,10 @@ fn spawnWithJob(allocator: std.mem.Allocator, path: []const u8, shim_args: ?[]co
             try cmdline.appendSlice(allocator, args);
         }
     }
-    try cmdline.appendSlice(allocator, user_tail);
+    if (user_tail.len > 0) {
+        try cmdline.append(allocator, ' ');
+        try cmdline.appendSlice(allocator, user_tail);
+    }
 
     const cmdline_utf8 = try cmdline.toOwnedSlice(allocator);
     defer allocator.free(cmdline_utf8);
