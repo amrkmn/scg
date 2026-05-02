@@ -127,7 +127,7 @@ func (s *AppsService) ListInstalled(filter string) ([]InstalledApp, error) {
 func (s *AppsService) GetAppPrefix(name string, scope scoop.InstallScope) (string, error) {
 	paths := scoop.ResolvePaths(scope)
 	currentLink := filepath.Join(paths.Apps, name, "current")
-	resolved, err := filepath.EvalSymlinks(currentLink)
+	resolved, err := os.Readlink(currentLink)
 	if err != nil {
 		return "", err
 	}
@@ -138,7 +138,7 @@ func (s *AppsService) GetAppPrefix(name string, scope scoop.InstallScope) (strin
 func (s *AppsService) GetInstalledApp(name string, scope scoop.InstallScope) (*InstalledApp, error) {
 	paths := scoop.ResolvePaths(scope)
 	currentLink := filepath.Join(paths.Apps, name, "current")
-	resolved, err := filepath.EvalSymlinks(currentLink)
+	resolved, err := os.Readlink(currentLink)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func (s *AppsService) GetInstalledApp(name string, scope scoop.InstallScope) (*I
 func (s *AppsService) SetHold(name string, scope scoop.InstallScope, hold bool) error {
 	paths := scoop.ResolvePaths(scope)
 	currentLink := filepath.Join(paths.Apps, name, "current")
-	resolved, err := filepath.EvalSymlinks(currentLink)
+	resolved, err := os.Readlink(currentLink)
 	if err != nil {
 		return err
 	}
@@ -229,7 +229,7 @@ func readAppInfo(name string, paths scoop.ScoopPaths) (InstalledApp, error) {
 
 	// Resolve current/ junction/symlink.
 	currentLink := filepath.Join(paths.Apps, name, "current")
-	resolved, err := filepath.EvalSymlinks(currentLink)
+	resolved, err := os.Readlink(currentLink)
 	if err != nil {
 		return app, err
 	}
