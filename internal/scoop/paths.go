@@ -74,3 +74,37 @@ func ScopeExists(scope InstallScope) bool {
 	_, err := os.Stat(p.Root)
 	return err == nil
 }
+
+// ResolveCurrentDir resolves the current version directory for an installed app.
+// It follows Scoop's Select-CurrentVersion logic:
+//  1. Read the current/ junction target via os.Readlink (primary)
+//  2. If the junction can't be read (NO_JUNCTION or regular directory),
+//     fall back to reading manifest.json from the current/ directory
+//
+// Returns the resolved directory path or an error if the version cannot be determined.
+func ResolveCurrentDir(appName string, scope InstallScope) (string, error) {
+	paths := ResolvePaths(scope)
+	currentLink := filepath.Join(paths.Apps, appName, "current")
+
+	resolved, err := os.Readlink(currentLink)
+	if err == nil {
+		return resolved, nil
+	}
+
+	manifestPath := filepath.Join(currentLink, "manifest.json")
+	if m, err := ReadManifest(manifestPath); err == nil && m.Version != "" {
+		return filepath.Join(paths.Apps, appName, m.Version), nil
+	}
+
+	return "", os.ErrNotExist
+}
+
+// ResolveCurrentVersion resolves the current version string for an installed app.
+// Returns the version string (e.g., "24.12.0") or empty string if not determinable.
+func ResolveCurrentVersion(appName string, scope InstallScope) string {
+	dir, err := ResolveCurrentDir(appName, scope)
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(dir)
+}

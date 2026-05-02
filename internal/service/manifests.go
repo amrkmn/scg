@@ -56,8 +56,7 @@ func (s *ManifestService) FindAllManifests(input string) []FoundManifest {
 
 	// Check installed locations.
 	for _, paths := range scoop.BothScopes() {
-		currentPath := filepath.Join(paths.Apps, appName, "current")
-		resolved, err := filepath.EvalSymlinks(currentPath)
+		resolved, err := scoop.ResolveCurrentDir(appName, paths.Scope)
 		if err != nil {
 			continue
 		}

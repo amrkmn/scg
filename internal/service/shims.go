@@ -112,8 +112,7 @@ func resolveShimTarget(shimPath string, paths scoop.ScoopPaths) string {
 		if !e.IsDir() {
 			continue
 		}
-		currentPath := filepath.Join(paths.Apps, e.Name(), "current")
-		resolved, err := filepath.EvalSymlinks(currentPath)
+		resolved, err := scoop.ResolveCurrentDir(e.Name(), paths.Scope)
 		if err != nil {
 			continue
 		}

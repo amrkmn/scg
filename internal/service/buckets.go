@@ -259,7 +259,7 @@ func (s *BucketService) CheckScoopStatus(local bool) (bool, error) {
 	// Scoop is installed as an app named "scoop".
 	for _, p := range scoop.BothScopes() {
 		scoopPath := filepath.Join(p.Apps, "scoop", "current")
-		resolved, err := filepath.EvalSymlinks(scoopPath)
+		resolved, err := os.Readlink(scoopPath)
 		if err != nil {
 			continue
 		}

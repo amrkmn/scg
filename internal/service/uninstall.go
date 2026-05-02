@@ -290,23 +290,7 @@ func (s *UninstallService) UninstallSingle(appInput string, opts UninstallOption
 }
 
 func resolveCurrentVersionDir(appName string, scope scoop.InstallScope) (string, error) {
-	paths := scoop.ResolvePaths(scope)
-	appDir := filepath.Join(paths.Apps, appName)
-	currentLink := filepath.Join(appDir, "current")
-
-	resolved, err := filepath.EvalSymlinks(currentLink)
-	if err != nil {
-		if fi, statErr := os.Stat(appDir); statErr == nil && fi.IsDir() {
-			entries, _ := os.ReadDir(appDir)
-			for _, entry := range entries {
-				if entry.IsDir() && entry.Name() != "current" {
-					return filepath.Join(appDir, entry.Name()), nil
-				}
-			}
-		}
-		return "", fmt.Errorf("could not resolve current version for %s", appName)
-	}
-	return resolved, nil
+	return scoop.ResolveCurrentDir(appName, scope)
 }
 
 func collectUninstallShims(m *scoop.Manifest, arch string) []install.ShimDef {
