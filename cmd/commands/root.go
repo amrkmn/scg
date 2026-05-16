@@ -52,6 +52,11 @@ It wraps the Scoop package manager with parallel operations and a clean interfac
 		NewHomeCommand(),
 		NewHoldCommand(),
 		NewUnholdCommand(),
+		NewCheckupCommand(),
+		NewDependsCommand(),
+		NewShimCommand(),
+		NewExportCommand(),
+		NewImportCommand(),
 		bucket.NewBucketCommand(),
 		newCompletionCommand(root),
 	)
