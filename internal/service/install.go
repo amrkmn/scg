@@ -599,16 +599,6 @@ func detectArch() string {
 	}
 }
 
-// resolveDownloadURL resolves the first download URL from the manifest.
-// Priority: architecture-specific URL > top-level URL.
-func resolveDownloadURL(m *scoop.Manifest, arch string) (string, error) {
-	urls, err := resolveDownloadURLs(m, arch)
-	if err != nil {
-		return "", err
-	}
-	return urls[0], nil
-}
-
 // resolveDownloadURLs resolves all download URLs from the manifest.
 // Priority: architecture-specific URL > top-level URL.
 func resolveDownloadURLs(m *scoop.Manifest, arch string) ([]string, error) {
@@ -635,16 +625,6 @@ func resolveDownloadURLs(m *scoop.Manifest, arch string) ([]string, error) {
 	return nil, fmt.Errorf("no download URL found in manifest for architecture %s", arch)
 }
 
-// extractFirstString extracts the first string from a value that may be
-// a string, []string, or []any containing strings.
-func extractFirstString(v any) (string, bool) {
-	strings := extractStrings(v)
-	if len(strings) == 0 {
-		return "", false
-	}
-	return strings[0], true
-}
-
 func extractStrings(v any) []string {
 	switch val := v.(type) {
 	case string:
@@ -663,16 +643,6 @@ func extractStrings(v any) []string {
 		return out
 	}
 	return nil
-}
-
-// resolveHash resolves the expected hash for the download.
-// Priority: architecture-specific hash > top-level hash.
-func resolveHash(m *scoop.Manifest, arch string) (*string, error) {
-	hashes := resolveHashes(m, arch)
-	if len(hashes) == 0 {
-		return nil, nil
-	}
-	return &hashes[0], nil
 }
 
 func resolveHashes(m *scoop.Manifest, arch string) []string {

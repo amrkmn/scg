@@ -231,7 +231,7 @@ func virustotalRequest(client *http.Client, method, endpoint, apiKey, body strin
 	if err != nil {
 		return nil, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(resp.Body)
 	return data, resp.StatusCode, nil
 }
