@@ -25,7 +25,7 @@ func NewListCommand() *cobra.Command {
 			}
 
 			if len(buckets) == 0 {
-				_, _ = fmt.Fprintln(os.Stdout, ui.Dim("No buckets installed."))
+				ctx.GetLogger().Skip("buckets", "none installed")
 				return nil
 			}
 

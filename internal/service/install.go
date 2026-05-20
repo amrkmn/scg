@@ -69,17 +69,17 @@ func (s *InstallService) Install(apps []string, opts InstallOptions) []InstallRe
 		// Display result.
 		if opts.AsDependencyFlow {
 			if result.Skipped {
-				s.ctx.GetLogger().Info(fmt.Sprintf("'%s' is already installed.", result.App))
+				s.ctx.GetLogger().Skip(result.App, "already installed")
 			} else if result.Success {
-				s.ctx.GetLogger().Info(fmt.Sprintf("Finished installing '%s'.", result.App))
+				s.ctx.GetLogger().Done(result.App, "installed")
 			} else if result.Error != nil {
 				s.ctx.GetLogger().Error(fmt.Sprintf("%s: %v", result.App, result.Error))
 			}
 		} else {
 			if result.Skipped {
-				s.ctx.GetLogger().Info(fmt.Sprintf("'%s' (%s) is already installed. Skipping.", result.App, result.Version))
+				s.ctx.GetLogger().Skip(result.App, fmt.Sprintf("%s already installed", result.Version))
 			} else if result.Success {
-				s.ctx.GetLogger().Success(fmt.Sprintf("'%s' (%s) was installed successfully!", result.App, result.Version))
+				s.ctx.GetLogger().Done(result.App, fmt.Sprintf("installed %s", result.Version))
 				s.ctx.GetLogger().Verbose(fmt.Sprintf("duration: %s", result.Duration.Round(time.Millisecond)))
 			} else if result.Error != nil {
 				s.ctx.GetLogger().Error(fmt.Sprintf("%s: %v", result.App, result.Error))
@@ -159,9 +159,9 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	}
 
 	if opts.AsDependencyFlow {
-		s.ctx.GetLogger().Info(fmt.Sprintf("Installing '%s'...", appInput))
+		s.ctx.GetLogger().Header(fmt.Sprintf("Installing dependency %s", appInput))
 	} else {
-		s.ctx.GetLogger().Header(fmt.Sprintf("Installing '%s' (%s) [%s] from '%s' bucket", appInput, m.Version, arch, bucketName))
+		s.ctx.GetLogger().Header(fmt.Sprintf("Installing %s %s [%s] from %s", appInput, m.Version, arch, bucketName))
 	}
 
 	// Check for running processes (simplified - just warn).
@@ -190,7 +190,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	binDefs = append(binDefs, archBins...)
 	preInstall := getArchString(m, "pre_install", arch)
 	currentLink := filepath.Join(appDir, "current")
-	persistItems := install.ParsePersistField(m.Persist)
+	persistItems := install.ParsePersistItems(m.Persist)
 	archPersist := parseArchPersist(m.Architecture, arch)
 	persistItems = append(persistItems, archPersist...)
 	envAddPath := mergeEnvAddPath(m.EnvAddPath, parseArchEnvAddPath(m.Architecture, arch))
@@ -201,72 +201,76 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	shortcuts := install.ParseShortcutsField(m.Shortcuts)
 
 	currentDir := versionDir
-	log := s.ctx.GetLogger().Log
+	logger := s.ctx.GetLogger()
 
-	// Resolve download URL.
-	dlURL, err := resolveDownloadURL(m, arch)
+	// Resolve download URLs.
+	dlURLs, err := resolveDownloadURLs(m, arch)
 	if err != nil {
-		result.Error = fmt.Errorf("failed to resolve download URL: %w", err)
+		result.Error = fmt.Errorf("failed to resolve download URLs: %w", err)
 		return result
 	}
+	firstURL := dlURLs[0]
 
-	// Download (or reuse cached file).
+	// Download (or reuse cached files).
 	dm := install.NewDownloadManager(opts.Scope, s.ctx.GetVerbose())
-	var dlResult *install.DownloadResult
+	dlResults := make([]*install.DownloadResult, 0, len(dlURLs))
 
-	if opts.SkipDownload {
-		if existingPath, ok := dm.FindCachedPath(appName, m.Version, dlURL); ok {
-			dlResult = &install.DownloadResult{
-				CachePath:  existingPath,
-				Downloaded: false,
-				UsedAria2:  false,
-			}
-			log("Loading " + filepath.Base(existingPath) + " from cache")
-		} else if opts.DryRun {
-			// In dry-run the pre-download phase only simulated the download;
-			// create a fake result so the rest of the flow can simulate too.
-			cachePath := dm.CachePath(appName, m.Version, dlURL)
-			dlResult = &install.DownloadResult{
-				CachePath:  cachePath,
-				Downloaded: false,
-				UsedAria2:  false,
-			}
-			log("[dry-run] Would load " + filepath.Base(cachePath) + " from cache")
-		} else {
-			result.Error = fmt.Errorf("cached file not found for %s (%s)", appName, m.Version)
-			return result
-		}
-	} else {
-		// Determine if a download will actually happen (vs cache hit).
-		willDownload := opts.NoCache
-		cachePath := dm.CachePath(appName, m.Version, dlURL)
-		if !willDownload {
+	for _, dlURL := range dlURLs {
+		if opts.SkipDownload {
 			if existingPath, ok := dm.FindCachedPath(appName, m.Version, dlURL); ok {
-				cachePath = existingPath
+				dlResults = append(dlResults, &install.DownloadResult{
+					CachePath:  existingPath,
+					Downloaded: false,
+					UsedAria2:  false,
+				})
+				logger.Done("cache", filepath.Base(existingPath))
+			} else if opts.DryRun {
+				// In dry-run the pre-download phase only simulated the download;
+				// create a fake result so the rest of the flow can simulate too.
+				cachePath := dm.CachePath(appName, m.Version, dlURL)
+				dlResults = append(dlResults, &install.DownloadResult{
+					CachePath:  cachePath,
+					Downloaded: false,
+					UsedAria2:  false,
+				})
+				logger.Dry("cache", filepath.Base(cachePath))
 			} else {
-				willDownload = true
+				result.Error = fmt.Errorf("cached file not found for %s (%s)", appName, m.Version)
+				return result
 			}
-		}
-		if !willDownload {
-			log("Loading " + filepath.Base(cachePath) + " from cache")
-		}
-
-		dlResult, err = dm.Download(appName, m.Version, dlURL, !opts.NoCache, opts.Proxy)
-		if err != nil {
-			result.Error = fmt.Errorf("download failed: %w", err)
-			return result
-		}
-
-		if dlResult.Downloaded {
-			if !dlResult.UsedAria2 {
-				s.ctx.GetLogger().Log(fmt.Sprintf("Downloaded %s", filepath.Base(dlResult.CachePath)))
+		} else {
+			// Determine if a download will actually happen (vs cache hit).
+			willDownload := opts.NoCache
+			cachePath := dm.CachePath(appName, m.Version, dlURL)
+			if !willDownload {
+				if existingPath, ok := dm.FindCachedPath(appName, m.Version, dlURL); ok {
+					cachePath = existingPath
+				} else {
+					willDownload = true
+				}
 			}
+			if !willDownload {
+				logger.Done("cache", filepath.Base(cachePath))
+			}
+
+			dlResult, err := dm.Download(appName, m.Version, dlURL, !opts.NoCache, opts.Proxy)
+			if err != nil {
+				result.Error = fmt.Errorf("download failed: %w", err)
+				return result
+			}
+
+			if dlResult.Downloaded {
+				if !dlResult.UsedAria2 {
+					logger.Done("download", filepath.Base(dlResult.CachePath))
+				}
+			}
+			dlResults = append(dlResults, dlResult)
 		}
 	}
 
 	// Build environment variables (after download so $fname is available).
 	persistDir := filepath.Join(paths.Root, "persist", appName)
-	downloadFile := install.DownloadFileName(appName, dlURL)
+	downloadFile := install.DownloadFileName(appName, firstURL)
 	preHookEnv := install.SetupHookEnvVars(
 		versionDir,   // dir (version path before current is linked)
 		versionDir,   // original_dir (version-specific)
@@ -293,9 +297,13 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 
 	// Verify hash (unless --skip).
 	if !opts.SkipHash {
-		expectedHash, err := resolveHash(m, arch)
-		if err == nil && expectedHash != nil {
-			hashFormat, parseErr := install.ParseHash(*expectedHash)
+		expectedHashes := resolveHashes(m, arch)
+		for i, dlResult := range dlResults {
+			expectedHash := hashAt(expectedHashes, i)
+			if expectedHash == "" {
+				continue
+			}
+			hashFormat, parseErr := install.ParseHash(expectedHash)
 			if parseErr != nil {
 				result.Error = fmt.Errorf("failed to parse hash: %w", parseErr)
 				return result
@@ -313,36 +321,39 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	}
 
 	// Extract archives; plain executables are staged directly unless explicitly marked as Inno Setup.
-	if install.IsArchive(dlResult.CachePath) || isManifestInnoSetup(m, arch) {
-		extractor := install.NewExtractor(false, s.ctx.GetVerbose())
-		extractOpts := install.ExtractionOptions{
-			InnoSetup: isManifestInnoSetup(m, arch),
-			MSI:       isManifestMSI(dlURL),
-		}
-		if opts.DryRun {
-			log(fmt.Sprintf("[dry-run] Would extract %s to %s", filepath.Base(dlResult.CachePath), displayPath(versionDir)))
-		} else {
-			logStepStart("Extracting")
-			if err := extractor.Extract(dlResult.CachePath, versionDir, extractOpts); err != nil {
-				logStepError()
-				result.Error = fmt.Errorf("extraction failed: %w", err)
-				return result
+	for i, dlResult := range dlResults {
+		dlURL := dlURLs[i]
+		if install.IsArchive(dlResult.CachePath) || isManifestInnoSetup(m, arch) {
+			extractor := install.NewExtractor(false, s.ctx.GetVerbose())
+			extractOpts := install.ExtractionOptions{
+				InnoSetup: isManifestInnoSetup(m, arch),
+				MSI:       isManifestMSI(dlURL),
 			}
-			logStepDone()
-			log("Extracted to " + versionDir)
-		}
-	} else {
-		if opts.DryRun {
-			log(fmt.Sprintf("[dry-run] Would create directory %s and copy %s", displayPath(versionDir), filepath.Base(downloadFile)))
-		} else {
-			if err := os.MkdirAll(versionDir, 0o755); err != nil {
-				result.Error = fmt.Errorf("failed to create version dir: %w", err)
-				return result
+			if opts.DryRun {
+				logger.Dry("extract", fmt.Sprintf("%s to %s", filepath.Base(dlResult.CachePath), displayPath(versionDir)))
+			} else {
+				logStepStart("Extracting " + filepath.Base(dlResult.CachePath))
+				if err := extractor.Extract(dlResult.CachePath, versionDir, extractOpts); err != nil {
+					logStepError()
+					result.Error = fmt.Errorf("extraction failed: %w", err)
+					return result
+				}
+				logStepDone()
+				logger.Done("extract", displayPath(versionDir))
 			}
-			dst := filepath.Join(versionDir, downloadFile)
-			if err := copyFile(dlResult.CachePath, dst); err != nil {
-				result.Error = fmt.Errorf("failed to stage installer payload: %w", err)
-				return result
+		} else {
+			if opts.DryRun {
+				logger.Dry("stage", fmt.Sprintf("%s in %s", filepath.Base(install.DownloadFileName(appName, dlURL)), displayPath(versionDir)))
+			} else {
+				if err := os.MkdirAll(versionDir, 0o755); err != nil {
+					result.Error = fmt.Errorf("failed to create version dir: %w", err)
+					return result
+				}
+				dst := filepath.Join(versionDir, install.DownloadFileName(appName, dlURL))
+				if err := copyFile(dlResult.CachePath, dst); err != nil {
+					result.Error = fmt.Errorf("failed to stage installer payload: %w", err)
+					return result
+				}
 			}
 		}
 	}
@@ -351,7 +362,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	if et := getArchString(m, "extract_to", arch); et != "" {
 		targetDir := filepath.Join(versionDir, et)
 		if opts.DryRun {
-			log(fmt.Sprintf("[dry-run] Would move contents to %s", displayPath(targetDir)))
+			logger.Dry("extract_to", displayPath(targetDir))
 		} else {
 			if err := install.MoveContents(versionDir, targetDir); err != nil {
 				result.Error = fmt.Errorf("extract_to failed: %w", err)
@@ -363,7 +374,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	// Flatten extract_dir if specified.
 	if ed := getArchString(m, "extract_dir", arch); ed != "" {
 		if opts.DryRun {
-			log(fmt.Sprintf("[dry-run] Would flatten extract_dir %s", ed))
+			logger.Dry("extract_dir", ed)
 		} else {
 			if err := install.FlattenExtractDir(versionDir, ed); err != nil {
 				result.Error = fmt.Errorf("extract_dir failed: %w", err)
@@ -375,37 +386,38 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	// Run pre_install hook.
 	if preInstall != "" {
 		if opts.DryRun {
-			log("[dry-run] Would run pre_install script")
+			logger.Dry("pre_install", "script")
 		} else {
-			logHookStepStart("Running pre_install script")
+			logHookStepStart("Running pre_install")
 			if err := install.RunHook("pre_install", preInstall, currentDir, preHookEnv); err != nil {
 				logHookStepError()
 				result.Error = fmt.Errorf("pre_install hook failed: %w", err)
 				return result
 			}
-			logHookStepDone("Finished running pre_install script.")
+			logHookStepDone("Finished running pre_install.")
 		}
 	}
 
 	// Run installer hook.
 	if m.Installer != nil {
 		if opts.DryRun {
-			log("[dry-run] Would run installer script")
+			logger.Dry("installer", "script")
 		} else {
-			logHookStepStart("Running installer script")
+			logHookStepStart("Running installer")
 			if err := install.RunInstallerHook("installer", m.Installer, currentDir, preHookEnv); err != nil {
 				logHookStepError()
 				result.Error = fmt.Errorf("installer failed: %w", err)
 				return result
 			}
-			logHookStepDone("Finished running installer script.")
+			logHookStepDone("Finished running installer.")
 		}
 	}
 
 	// Create current/ junction.
-	log(fmt.Sprintf("Linking %s → %s", displayPath(currentLink), displayPath(versionDir)))
+	logger.Header("Linking current")
+	logger.Detail(fmt.Sprintf("%s -> %s", displayPath(currentLink), displayPath(versionDir)))
 	if opts.DryRun {
-		log("[dry-run] Would create junction")
+		logger.Dry("link", displayPath(currentLink))
 	} else {
 		if err := install.CreateJunction(currentLink, versionDir); err != nil {
 			result.Error = fmt.Errorf("failed to create junction: %w", err)
@@ -415,20 +427,21 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 
 	// Create shims.
 	if len(binDefs) > 0 {
+		logger.Header("Creating shims")
 		for _, w := range install.DetectShimOverwrites(binDefs, currentLink, opts.Scope) {
-			s.ctx.GetLogger().Warn("Warning: " + w)
+			logger.Warn(w)
 		}
 		if opts.DryRun {
 			for _, bin := range binDefs {
-				log(fmt.Sprintf("[dry-run] Would create shim for '%s'.", bin.Name))
+				logger.Dry("shim", bin.Name)
 			}
 		} else {
 			if err := install.CreateShims(binDefs, currentLink, opts.Scope); err != nil {
-				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: shim creation: %v", err))
+				s.ctx.GetLogger().Warn(fmt.Sprintf("shim creation: %v", err))
 				// Continue - best effort.
 			} else {
 				for _, bin := range binDefs {
-					log(fmt.Sprintf("Creating shim for '%s'.", bin.Name))
+					logger.Done("shim", bin.Name)
 				}
 			}
 		}
@@ -437,18 +450,19 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	// Add to PATH.
 	pathChanged := false
 	if len(envPaths) > 0 {
+		logger.Header("Updating PATH")
 		if opts.DryRun {
 			pathTarget := "your"
 			if opts.Scope == scoop.ScopeGlobal {
 				pathTarget = "global"
 			}
 			for _, p := range envPaths {
-				log(fmt.Sprintf("[dry-run] Would add %s to %s path.", displayPath(p), pathTarget))
+				logger.Dry("path", fmt.Sprintf("add %s to %s path", displayPath(p), pathTarget))
 			}
 		} else {
 			pathAdditions, err := install.AddToPathWithResultNoBroadcast(envPaths, opts.Scope)
 			if err != nil {
-				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: PATH update: %v", err))
+				s.ctx.GetLogger().Warn(fmt.Sprintf("PATH update: %v", err))
 			} else {
 				pathChanged = len(pathAdditions) > 0
 				pathTarget := "your"
@@ -456,7 +470,7 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 					pathTarget = "global"
 				}
 				for _, p := range pathAdditions {
-					log(fmt.Sprintf("Adding %s to %s path.", displayPath(p), pathTarget))
+					logger.Done("path", fmt.Sprintf("added %s to %s path", displayPath(p), pathTarget))
 				}
 			}
 		}
@@ -464,28 +478,30 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 
 	// Setup persist data.
 	if len(persistItems) > 0 {
+		logger.Header("Persisting data")
 		for _, item := range persistItems {
-			log("Persisting " + item)
+			logger.Detail(item.Source)
 		}
 		if opts.DryRun {
-			log("[dry-run] Would setup persist data")
+			logger.Dry("persist", "data")
 		} else {
 			if err := install.SetupPersistData(appName, persistItems, currentLink, opts.Scope); err != nil {
-				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: persist setup: %v", err))
+				s.ctx.GetLogger().Warn(fmt.Sprintf("persist setup: %v", err))
 			}
 		}
 	}
 
 	// Create start menu shortcuts.
 	if len(shortcuts) > 0 {
+		logger.Header("Creating shortcuts")
 		for _, shortcut := range shortcuts {
-			log(fmt.Sprintf("Creating shortcut for %s (%s)", shortcut.Name, filepath.Base(filepath.FromSlash(shortcut.Target))))
+			logger.Detail(fmt.Sprintf("%s (%s)", shortcut.Name, filepath.Base(filepath.FromSlash(shortcut.Target))))
 		}
 		if opts.DryRun {
-			log("[dry-run] Would create start menu shortcuts")
+			logger.Dry("shortcuts", "start menu")
 		} else {
 			if err := install.CreateStartMenuShortcuts(shortcuts, currentLink, opts.Scope); err != nil {
-				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: shortcuts: %v", err))
+				s.ctx.GetLogger().Warn(fmt.Sprintf("shortcuts: %v", err))
 			}
 		}
 	}
@@ -493,18 +509,19 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	// Set environment variables.
 	envChanged := false
 	if len(envVars) > 0 {
+		logger.Header("Setting environment")
 		for k, v := range envVars {
-			log("Set environment variable " + k + "=" + v)
+			logger.Detail(k + "=" + v)
 		}
 
 		if opts.DryRun {
-			log("[dry-run] Would set environment variables")
+			logger.Dry("env", "variables")
 		} else {
 			if err := install.SetEnvVarsNoBroadcast(envVars, opts.Scope); err != nil {
-				s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: env set batch: %v", err))
+				s.ctx.GetLogger().Warn(fmt.Sprintf("env set batch: %v", err))
 				for k, v := range envVars {
 					if err := install.SetEnvVarNoBroadcast(k, v, opts.Scope); err != nil {
-						s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: env set %s: %v", k, err))
+						s.ctx.GetLogger().Warn(fmt.Sprintf("env set %s: %v", k, err))
 						continue
 					}
 					envChanged = true
@@ -522,45 +539,45 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 	// Run post_install hook.
 	if postInstall != "" {
 		if opts.DryRun {
-			log("[dry-run] Would run post_install script")
+			logger.Dry("post_install", "script")
 		} else {
-			logHookStepStart("Running post_install script")
+			logHookStepStart("Running post_install")
 			if err := install.RunHook("post_install", postInstall, currentLink, expandedEnvVars); err != nil {
 				logHookStepError()
 				result.Error = fmt.Errorf("post_install hook failed: %w", err)
 				return result
 			}
-			logHookStepDone("Finished running post_install script.")
+			logHookStepDone("Finished running post_install.")
 		}
 	}
 
 	// Save install.json.
-	log("Saved metadata (install.json, manifest.json)")
+	logger.Header("Saving metadata")
 	if opts.DryRun {
-		log("[dry-run] Would write install.json and manifest.json")
+		logger.Dry("metadata", "install.json and manifest.json")
 	} else {
 		info := &install.InstallInfo{
 			Architecture: arch,
 			Bucket:       bucketName,
 		}
 		if err := install.WriteInstallInfo(filepath.Join(versionDir, "install.json"), info); err != nil {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to save install.json: %v", err))
+			s.ctx.GetLogger().Warn(fmt.Sprintf("failed to save install.json: %v", err))
 		}
 
 		// Save manifest.json.
 		if err := install.WriteManifest(filepath.Join(versionDir, "manifest.json"), m); err != nil {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("Warning: failed to save manifest.json: %v", err))
+			s.ctx.GetLogger().Warn(fmt.Sprintf("failed to save manifest.json: %v", err))
 		}
 	}
 
 	// Show manifest notes.
 	for _, note := range manifestNotes(m.Notes) {
-		log(note)
+		logger.Log(note)
 	}
 
 	// Show feature suggestions.
 	for _, suggestion := range manifestSuggestions(m.Suggest) {
-		log(fmt.Sprintf("'%s' suggests installing '%s'.", appInput, suggestion))
+		logger.Log(fmt.Sprintf("'%s' suggests installing '%s'.", appInput, suggestion))
 	}
 
 	result.Success = true
@@ -582,16 +599,26 @@ func detectArch() string {
 	}
 }
 
-// resolveDownloadURL resolves the download URL from the manifest.
+// resolveDownloadURL resolves the first download URL from the manifest.
 // Priority: architecture-specific URL > top-level URL.
 func resolveDownloadURL(m *scoop.Manifest, arch string) (string, error) {
+	urls, err := resolveDownloadURLs(m, arch)
+	if err != nil {
+		return "", err
+	}
+	return urls[0], nil
+}
+
+// resolveDownloadURLs resolves all download URLs from the manifest.
+// Priority: architecture-specific URL > top-level URL.
+func resolveDownloadURLs(m *scoop.Manifest, arch string) ([]string, error) {
 	// Try architecture-specific URL first.
 	if m.Architecture != nil {
 		if archSection, ok := m.Architecture[arch]; ok {
 			if section, ok := archSection.(map[string]any); ok {
 				if url, ok := section["url"]; ok {
-					if s, ok := extractFirstString(url); ok {
-						return s, nil
+					if urls := extractStrings(url); len(urls) > 0 {
+						return urls, nil
 					}
 				}
 			}
@@ -600,44 +627,62 @@ func resolveDownloadURL(m *scoop.Manifest, arch string) (string, error) {
 
 	// Fall back to top-level URL.
 	if m.URL != nil {
-		if s, ok := extractFirstString(m.URL); ok {
-			return s, nil
+		if urls := extractStrings(m.URL); len(urls) > 0 {
+			return urls, nil
 		}
 	}
 
-	return "", fmt.Errorf("no download URL found in manifest for architecture %s", arch)
+	return nil, fmt.Errorf("no download URL found in manifest for architecture %s", arch)
 }
 
 // extractFirstString extracts the first string from a value that may be
 // a string, []string, or []any containing strings.
 func extractFirstString(v any) (string, bool) {
+	strings := extractStrings(v)
+	if len(strings) == 0 {
+		return "", false
+	}
+	return strings[0], true
+}
+
+func extractStrings(v any) []string {
 	switch val := v.(type) {
 	case string:
-		return val, val != ""
-	case []string:
-		if len(val) > 0 {
-			return val[0], true
+		if val != "" {
+			return []string{val}
 		}
+	case []string:
+		return val
 	case []any:
-		if len(val) > 0 {
-			if s, ok := val[0].(string); ok {
-				return s, true
+		out := make([]string, 0, len(val))
+		for _, item := range val {
+			if s, ok := item.(string); ok && s != "" {
+				out = append(out, s)
 			}
 		}
+		return out
 	}
-	return "", false
+	return nil
 }
 
 // resolveHash resolves the expected hash for the download.
 // Priority: architecture-specific hash > top-level hash.
 func resolveHash(m *scoop.Manifest, arch string) (*string, error) {
+	hashes := resolveHashes(m, arch)
+	if len(hashes) == 0 {
+		return nil, nil
+	}
+	return &hashes[0], nil
+}
+
+func resolveHashes(m *scoop.Manifest, arch string) []string {
 	// Try architecture-specific hash first.
 	if m.Architecture != nil {
 		if archSection, ok := m.Architecture[arch]; ok {
 			if section, ok := archSection.(map[string]any); ok {
 				if hash, ok := section["hash"]; ok {
-					if s, ok := extractFirstString(hash); ok {
-						return &s, nil
+					if hashes := extractStrings(hash); len(hashes) > 0 {
+						return hashes
 					}
 				}
 			}
@@ -646,12 +691,23 @@ func resolveHash(m *scoop.Manifest, arch string) (*string, error) {
 
 	// Fall back to top-level hash.
 	if m.Hash != nil {
-		if s, ok := extractFirstString(m.Hash); ok {
-			return &s, nil
-		}
+		return extractStrings(m.Hash)
 	}
 
-	return nil, nil
+	return nil
+}
+
+func hashAt(hashes []string, i int) string {
+	if len(hashes) == 0 {
+		return ""
+	}
+	if i < len(hashes) {
+		return hashes[i]
+	}
+	if len(hashes) == 1 {
+		return hashes[0]
+	}
+	return ""
 }
 
 // isManifestInnoSetup checks if the manifest specifies an Inno Setup installer.
@@ -736,7 +792,7 @@ func joinAnyString(v any) string {
 }
 
 // parseArchPersist extracts persist items from architecture-specific sections.
-func parseArchPersist(archData map[string]any, arch string) []string {
+func parseArchPersist(archData map[string]any, arch string) []install.PersistItem {
 	if archData == nil {
 		return nil
 	}
@@ -749,7 +805,7 @@ func parseArchPersist(archData map[string]any, arch string) []string {
 		return nil
 	}
 	if persist, ok := section["persist"]; ok {
-		return install.ParsePersistField(persist)
+		return install.ParsePersistItems(persist)
 	}
 	return nil
 }
@@ -938,31 +994,31 @@ func copyFile(src, dst string) error {
 }
 
 func logStepStart(title string) {
-	_, _ = fmt.Fprintf(os.Stdout, "%s...", title)
+	_, _ = fmt.Fprintln(os.Stdout, ui.Heading(title))
 }
 
 func logHookStepStart(title string) {
-	_, _ = fmt.Fprintf(os.Stdout, "%s...\n", title)
+	_, _ = fmt.Fprintln(os.Stdout, ui.Heading(title))
 }
 
 func logStepDone() {
-	_, _ = fmt.Fprintln(os.Stdout, ui.Green("done."))
+	_, _ = fmt.Fprintln(os.Stdout, ui.Done("done", ""))
 }
 
 func logHookStepDone(message string) {
-	_, _ = fmt.Fprintf(os.Stdout, "%s\n", ui.Green(message))
+	_, _ = fmt.Fprintf(os.Stdout, "%s\n", ui.Done(strings.TrimSuffix(message, "."), ""))
 }
 
 func logStepOK() {
-	_, _ = fmt.Fprintln(os.Stdout, ui.Green("ok."))
+	_, _ = fmt.Fprintln(os.Stdout, ui.Done("verified", ""))
 }
 
 func logStepError() {
-	_, _ = fmt.Fprintln(os.Stdout, "error.")
+	_, _ = fmt.Fprintln(os.Stdout, ui.FailLine("failed"))
 }
 
 func logHookStepError() {
-	_, _ = fmt.Fprintln(os.Stdout, "error.")
+	_, _ = fmt.Fprintln(os.Stdout, ui.FailLine("hook failed"))
 }
 
 func displayPath(path string) string {

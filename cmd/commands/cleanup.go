@@ -55,11 +55,11 @@ func NewCleanupCommand() *cobra.Command {
 					}
 				}
 				if len(targets) == 0 {
-					_, _ = fmt.Fprintf(os.Stderr, "App '%s' not found\n", args[0])
+					ctx.GetLogger().Error(fmt.Sprintf("%s not found", args[0]))
 					return os.ErrNotExist
 				}
 			} else {
-				_, _ = fmt.Fprintln(os.Stderr, "Specify an app name or use --all")
+				ctx.GetLogger().Error("specify an app name or use --all")
 				return nil
 			}
 
@@ -76,7 +76,13 @@ func NewCleanupCommand() *cobra.Command {
 			}
 
 			if flagDryRun {
-				_, _ = fmt.Fprintln(os.Stdout, ui.Dim("(dry run — no files will be removed)"))
+				ctx.GetLogger().Dry("cleanup", "no files will be removed")
+			}
+
+			if flagAll || (len(args) > 0 && args[0] == "*") {
+				ctx.GetLogger().Header("Cleaning installed apps")
+			} else if len(args) > 0 {
+				ctx.GetLogger().Header(fmt.Sprintf("Cleaning %s", args[0]))
 			}
 
 			var results []service.CleanupResult
@@ -150,10 +156,10 @@ func displayCleanupResult(r service.CleanupResult, maxNameLen int) {
 	}
 
 	scopeTag := ui.Dim("[" + string(r.Scope) + "]")
-	_, _ = fmt.Fprintf(os.Stdout, "%s : %s%s %s\n", ui.Cyan(name), detail, cacheDetail, scopeTag)
+	_, _ = fmt.Fprintf(os.Stdout, "%s\n", ui.Detail(fmt.Sprintf("%s %s%s %s", ui.Cyan(name), detail, cacheDetail, scopeTag)))
 
 	for _, f := range r.FailedVersions {
-		_, _ = fmt.Fprintf(os.Stdout, "  %s Could not remove %s: %v\n", ui.Warning("!"), f.Version, f.Error)
+		_, _ = fmt.Fprintln(os.Stdout, ui.WarnLine(fmt.Sprintf("could not remove %s: %v", f.Version, f.Error)))
 	}
 }
 
@@ -177,7 +183,7 @@ func displayCleanupSummary(results []service.CleanupResult) {
 	}
 
 	if totalVersions == 0 && totalCache == 0 {
-		_, _ = fmt.Fprintln(os.Stdout, ui.Dim("Nothing to clean up."))
+		_, _ = fmt.Fprintln(os.Stdout, ui.Skip("cleanup", "nothing to remove"))
 		return
 	}
 
@@ -190,11 +196,12 @@ func displayCleanupSummary(results []service.CleanupResult) {
 	}
 	parts = append(parts, fmt.Sprintf("%s freed", ui.FormatSize(totalSize)))
 
-	_, _ = fmt.Fprintf(os.Stdout, "%s %s\n", ui.Success("✓"), joinStrings(parts))
+	_, _ = fmt.Fprintln(os.Stdout, ui.Heading("Summary"))
+	_, _ = fmt.Fprintln(os.Stdout, ui.Done("cleanup", joinStrings(parts)))
 
 	if hasLocked {
-		_, _ = fmt.Fprintf(os.Stdout, "\n%s Some versions could not be removed (files may be in use).\n", ui.Warning("!"))
-		_, _ = fmt.Fprintln(os.Stdout, ui.Dim("  Tip: close any running applications and try again."))
+		_, _ = fmt.Fprintf(os.Stdout, "\n%s\n", ui.WarnLine("some versions could not be removed; files may be in use"))
+		_, _ = fmt.Fprintln(os.Stdout, ui.Detail(ui.Dim("close running applications and try again")))
 	}
 }
 

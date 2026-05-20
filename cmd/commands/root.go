@@ -13,7 +13,7 @@ func NewRootCommand(version string) *cobra.Command {
 
 	root := &cobra.Command{
 		Use:   "scg",
-		Short: "SCoop in Go — a fast, native Scoop-compatible package manager",
+		Short: "SCoop in Go - a fast, native Scoop-compatible package manager",
 		Long: `scg is a fast, native Scoop-compatible CLI for Windows.
 It wraps the Scoop package manager with parallel operations and a clean interface.`,
 		SilenceUsage:  true,
@@ -36,6 +36,7 @@ It wraps the Scoop package manager with parallel operations and a clean interfac
 	// Register all top-level commands.
 	root.AddCommand(
 		NewVersionCommand(version),
+		NewAliasCommand(),
 		NewPrefixCommand(),
 		NewWhichCommand(),
 		NewConfigCommand(),
@@ -46,8 +47,11 @@ It wraps the Scoop package manager with parallel operations and a clean interfac
 		NewCleanupCommand(),
 		NewStatusCommand(),
 		NewInstallCommand(),
+		NewDownloadCommand(),
 		NewUninstallCommand(),
 		NewUpdateCommand(),
+		NewResetCommand(),
+		NewVirusTotalCommand(),
 		NewCacheCommand(),
 		NewHomeCommand(),
 		NewHoldCommand(),

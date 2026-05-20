@@ -29,7 +29,7 @@ func NewStatusCommand() *cobra.Command {
 				return err
 			}
 			if len(apps) == 0 {
-				_, _ = fmt.Fprintln(os.Stdout, ui.Dim("No apps installed."))
+				ctx.GetLogger().Skip("apps", "none installed")
 				return nil
 			}
 
@@ -42,18 +42,18 @@ func NewStatusCommand() *cobra.Command {
 
 			scoopOutdated, _ := ctx.Services.Buckets.CheckScoopStatus(flagLocal)
 			if scoopOutdated {
-				_, _ = fmt.Fprintf(os.Stdout, "%s Scoop has updates available. Run 'scoop update' to update.\n", ui.Warning("!"))
+				ctx.GetLogger().Warn("scoop has updates available; run 'scoop update' to update")
 			} else {
-				_, _ = fmt.Fprintf(os.Stdout, "%s Scoop is up to date.\n", ui.Success("✓"))
+				ctx.GetLogger().Done("scoop", "up-to-date")
 			}
 
 			buckets, _ := ctx.Services.Buckets.List("")
 			bucketsOutdated, _ := ctx.Services.Buckets.CheckBucketsStatus(flagLocal, buckets)
 
 			if bucketsOutdated {
-				_, _ = fmt.Fprintf(os.Stdout, "%s Some buckets have updates available. Run 'scg bucket update' to update.\n", ui.Warning("!"))
+				ctx.GetLogger().Warn("some buckets have updates available; run 'scg bucket update' to update")
 			} else {
-				_, _ = fmt.Fprintf(os.Stdout, "%s All buckets are up to date.\n", ui.Success("✓"))
+				ctx.GetLogger().Done("buckets", "up-to-date")
 			}
 			_, _ = fmt.Fprintln(os.Stdout)
 
@@ -72,7 +72,7 @@ func NewStatusCommand() *cobra.Command {
 			}
 
 			if len(display) == 0 {
-				_, _ = fmt.Fprintf(os.Stdout, "%s All installed apps are up to date.\n", ui.Success("✓"))
+				ctx.GetLogger().Done("apps", "up-to-date")
 				return nil
 			}
 

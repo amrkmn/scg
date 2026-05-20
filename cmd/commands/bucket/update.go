@@ -15,7 +15,7 @@ import (
 	"go.noz.one/scg/internal/ui"
 )
 
-// updateState tracks per-bucket display state for the animated UI
+// updateState tracks per-bucket display state for the animated UI.
 type updateState struct {
 	name   string
 	status string // "updating" | "updated" | "up-to-date" | "failed"
@@ -43,7 +43,7 @@ func NewUpdateCommand() *cobra.Command {
 			if len(names) == 0 {
 				allBuckets, err := ctx.Services.Buckets.List(scope)
 				if err != nil {
-					_, _ = fmt.Fprintf(os.Stderr, "%s Failed to list buckets: %v\n", ui.Error("error:"), err)
+					_, _ = fmt.Fprintln(os.Stderr, ui.FailLine(fmt.Sprintf("failed to list buckets: %v", err)))
 					os.Exit(1)
 				}
 				for _, b := range allBuckets {
@@ -53,9 +53,11 @@ func NewUpdateCommand() *cobra.Command {
 			}
 
 			if len(names) == 0 {
-				fmt.Println("No buckets to update.")
+				fmt.Println(ui.Skip("buckets", "none to update"))
 				return nil
 			}
+
+			fmt.Println(ui.Heading(fmt.Sprintf("Updating %d bucket(s)", len(names))))
 
 			// Initialize display state for each bucket
 			var mu sync.Mutex
@@ -70,7 +72,7 @@ func NewUpdateCommand() *cobra.Command {
 			// Print initial state (all "updating...")
 			printStates(states, 0)
 
-			// Background ticker: animate the dots for buckets still "updating"
+			// Background ticker: animate wait frames for buckets still updating.
 			ticker := time.NewTicker(ui.SpinnerInterval)
 			tickerDone := make(chan struct{})
 			go func() {
@@ -142,22 +144,23 @@ func NewUpdateCommand() *cobra.Command {
 			}
 
 			fmt.Println()
+			fmt.Println(ui.Heading("Summary"))
 			parts := []string{}
 			if updated > 0 {
-				parts = append(parts, fmt.Sprintf("%s %d updated", ui.Success("✓"), updated))
+				parts = append(parts, ui.Green(fmt.Sprintf("%d updated", updated)))
 			}
 			if upToDate > 0 {
-				parts = append(parts, fmt.Sprintf("%d up-to-date", upToDate))
+				parts = append(parts, ui.Dim(fmt.Sprintf("%d up-to-date", upToDate)))
 			}
 			if failed > 0 {
-				parts = append(parts, fmt.Sprintf("%s %d failed", ui.Error("✗"), failed))
+				parts = append(parts, ui.Red(fmt.Sprintf("%d failed", failed)))
 			}
-			fmt.Println(strings.Join(parts, "  "))
+			fmt.Println(ui.Detail(strings.Join(parts, ", ")))
 
 			// Print changelogs for updated buckets at the bottom
 			if changelog && updated > 0 {
 				fmt.Println()
-				fmt.Println("Changelog:")
+				fmt.Println(ui.Heading("Changelog"))
 				sortedResults := make([]service.UpdateResult, len(results))
 				copy(sortedResults, results)
 				sort.Slice(sortedResults, func(i, j int) bool {
@@ -188,38 +191,51 @@ func NewUpdateCommand() *cobra.Command {
 
 // printStates prints all bucket states for the first time
 func printStates(states []updateState, frame int) {
+	nameWidth := bucketNameWidth(states)
 	for _, s := range states {
-		fmt.Println(formatBucketLine(s, frame))
+		fmt.Println(formatBucketLine(s, frame, nameWidth))
 	}
 }
 
 // reprintStates moves cursor up to the top of the state block and reprints everything
 func reprintStates(states []updateState, frame int) {
+	nameWidth := bucketNameWidth(states)
 	fmt.Printf("\x1b[%dA", len(states))
 	for _, s := range states {
-		fmt.Printf("\r\x1b[2K%s\n", formatBucketLine(s, frame))
+		fmt.Printf("\r\x1b[2K%s\n", formatBucketLine(s, frame, nameWidth))
 	}
 }
 
-var dotFrames = ui.SpinnerFrames
+var waitFrames = ui.SpinnerFrames
 
-// formatBucketLine returns a single formatted line for a bucket update state
-func formatBucketLine(s updateState, frame int) string {
+func bucketNameWidth(states []updateState) int {
+	width := 0
+	for _, s := range states {
+		if len(s.name) > width {
+			width = len(s.name)
+		}
+	}
+	return width
+}
+
+// formatBucketLine returns a single formatted line for a bucket update state.
+func formatBucketLine(s updateState, frame, nameWidth int) string {
+	name := ui.PadRight(s.name, nameWidth)
 	switch s.status {
 	case "updating":
-		dots := dotFrames[frame%len(dotFrames)]
-		return fmt.Sprintf("  %s  %s", ui.Dim(dots), ui.Bold(s.name))
+		spinner := waitFrames[frame%len(waitFrames)]
+		return ui.Detail(fmt.Sprintf("%s %s %s", ui.Cyan(spinner), ui.Bold(name), ui.Cyan("updating")))
 	case "updated":
-		return fmt.Sprintf("  %s  %s  %s", ui.Success("✓"), ui.Bold(s.name), ui.Dim("updated"))
+		return ui.Detail(fmt.Sprintf("  %s %s", ui.Green(name), ui.Green("updated")))
 	case "up-to-date":
-		return fmt.Sprintf("  %s  %s  %s", ui.Dim("–"), ui.Bold(s.name), ui.Dim("up-to-date"))
+		return ui.Detail(ui.Dim(fmt.Sprintf("  %s up-to-date", name)))
 	case "failed":
 		msg := "failed"
 		if s.err != nil {
 			msg = fmt.Sprintf("failed: %v", s.err)
 		}
-		return fmt.Sprintf("  %s  %s  %s", ui.Error("✗"), ui.Bold(s.name), ui.Error(msg))
+		return ui.Detail(fmt.Sprintf("  %s %s", ui.Red(name), ui.Red(msg)))
 	default:
-		return fmt.Sprintf("  %s  %s", ui.Dim("?"), ui.Bold(s.name))
+		return ui.Detail(ui.Dim("  " + name))
 	}
 }

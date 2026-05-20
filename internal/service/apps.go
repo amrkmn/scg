@@ -30,6 +30,10 @@ type Logger interface {
 	Error(msg string)
 	Verbose(msg string)
 	Header(msg string)
+	Detail(msg string)
+	Done(subject, detail string)
+	Skip(subject, detail string)
+	Dry(subject, detail string)
 	Newline()
 }
 

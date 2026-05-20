@@ -60,9 +60,9 @@ func NewListCommand() *cobra.Command {
 
 			if len(apps) == 0 {
 				if filter != "" {
-					_, _ = fmt.Fprintf(os.Stdout, "%s No apps matching '%s' found.\n", ui.Warning("!"), filter)
+					_, _ = fmt.Fprintln(os.Stdout, ui.Skip("apps", fmt.Sprintf("no matches for %s", filter)))
 				} else {
-					_, _ = fmt.Fprintln(os.Stdout, ui.Dim("No apps installed."))
+					_, _ = fmt.Fprintln(os.Stdout, ui.Skip("apps", "none installed"))
 				}
 				return nil
 			}

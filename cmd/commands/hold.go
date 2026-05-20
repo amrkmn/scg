@@ -2,12 +2,10 @@ package commands
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 	"go.noz.one/scg/internal/cmdctx"
 	"go.noz.one/scg/internal/scoop"
-	"go.noz.one/scg/internal/ui"
 )
 
 // NewHoldCommand creates the hold subcommand.
@@ -28,18 +26,18 @@ func NewHoldCommand() *cobra.Command {
 			}
 
 			if app == "scoop" {
-				fmt.Printf("%s scoop is now held and will not be updated.\n", ui.Success("+"))
+				ctx.GetLogger().Done("scoop", "held")
 				return nil
 			}
 
 			installed, err := ctx.Services.Apps.GetInstalledApp(app, scope)
 			if err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "%s '%s' is not installed in %s scope\n", ui.Error("-"), app, scope)
+				ctx.GetLogger().Error(fmt.Sprintf("%s is not installed in %s scope", app, scope))
 				return err
 			}
 
 			if installed.Held {
-				fmt.Printf("%s '%s' is already held.\n", ui.Info("i"), app)
+				ctx.GetLogger().Skip(app, "already held")
 				return nil
 			}
 
@@ -47,7 +45,7 @@ func NewHoldCommand() *cobra.Command {
 				return fmt.Errorf("failed to hold '%s': %w", app, err)
 			}
 
-			fmt.Printf("%s '%s' is now held and will not be updated.\n", ui.Success("+"), app)
+			ctx.GetLogger().Done(app, "held")
 			return nil
 		},
 	}

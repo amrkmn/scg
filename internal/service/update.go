@@ -140,21 +140,26 @@ func (s *UpdateService) Update(apps []string, opts UpdateOptions) []AppUpdateRes
 		targets = filtered
 	}
 
-	// Print summary lines (Scoop-style).
+	// Print update plan before mutating installed apps.
 	if !opts.Quiet {
+		s.ctx.GetLogger().Header("Checking outdated apps")
+		if opts.All {
+			s.ctx.GetLogger().Log(fmt.Sprintf("You have %d outdated app(s) installed.", len(targets)))
+		}
+
+		if len(targets) == 1 {
+			s.ctx.GetLogger().Header("Upgrading 1 outdated app")
+		} else if len(targets) > 1 {
+			s.ctx.GetLogger().Header(fmt.Sprintf("Upgrading %d outdated apps", len(targets)))
+		}
 		for _, app := range targets {
 			if sr, ok := needsAttention[appKey(app.Name, app.Scope)]; ok {
-				s.ctx.GetLogger().Log(fmt.Sprintf("%s: %s -> %s", ui.Highlight(app.Name), sr.Installed, sr.Latest))
+				s.ctx.GetLogger().Log(ui.VersionChange(app.Name, sr.Installed, sr.Latest))
 			}
-		}
-		if len(targets) == 1 {
-			s.ctx.GetLogger().Log("Updating one outdated app:")
-		} else if len(targets) > 1 {
-			s.ctx.GetLogger().Log(fmt.Sprintf("Updating %d outdated apps:", len(targets)))
 		}
 	}
 
-	results := make([]AppUpdateResult, 0, len(targets) + len(failedLookups))
+	results := make([]AppUpdateResult, 0, len(targets)+len(failedLookups))
 	results = append(results, failedLookups...)
 	for _, app := range targets {
 		start := time.Now()
@@ -176,7 +181,7 @@ func (s *UpdateService) updateSingle(app InstalledApp, status AppStatusResult, o
 	if status.Name == "" && !opts.Force {
 		result.Skipped = true
 		if !opts.Quiet {
-			s.ctx.GetLogger().Info(fmt.Sprintf("'%s' is up to date.", app.Name))
+			s.ctx.GetLogger().Skip(app.Name, "up-to-date")
 		}
 		return result
 	}
@@ -184,7 +189,7 @@ func (s *UpdateService) updateSingle(app InstalledApp, status AppStatusResult, o
 	if status.Failed {
 		result.Skipped = true
 		if !opts.Quiet {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("'%s' has a failed status; skipping update.", app.Name))
+			s.ctx.GetLogger().Warn(fmt.Sprintf("%s has a failed status; skipping update", app.Name))
 		}
 		return result
 	}
@@ -193,7 +198,8 @@ func (s *UpdateService) updateSingle(app InstalledApp, status AppStatusResult, o
 	result.NewVersion = status.Latest
 
 	if !opts.Quiet {
-		s.ctx.GetLogger().Log(fmt.Sprintf("Updating '%s' (%s -> %s)", app.Name, result.OldVersion, result.NewVersion))
+		s.ctx.GetLogger().Header(fmt.Sprintf("Upgrading %s", app.Name))
+		s.ctx.GetLogger().Log(fmt.Sprintf("%s -> %s", result.OldVersion, result.NewVersion))
 	}
 
 	// Resolve manifest and architecture to pre-download.
@@ -229,43 +235,52 @@ func (s *UpdateService) updateSingle(app InstalledApp, status AppStatusResult, o
 		arch = detectArch()
 	}
 
-	dlURL, err := resolveDownloadURL(m, arch)
+	dlURLs, err := resolveDownloadURLs(m, arch)
 	if err != nil {
-		result.Error = fmt.Errorf("failed to resolve download URL: %w", err)
+		result.Error = fmt.Errorf("failed to resolve download URLs: %w", err)
 		return result
 	}
 
-	// --- Pre-download phase (Scoop downloads first, then uninstalls) ---
+	// --- Pre-download phase (Scoop downloads before uninstalling) ---
 	if !opts.Quiet {
-		s.ctx.GetLogger().Log("Downloading new version")
+		s.ctx.GetLogger().Header(fmt.Sprintf("Fetching downloads for %s", app.Name))
 	}
 
 	dm := install.NewDownloadManager(app.Scope, s.ctx.GetVerbose())
-	var dlResult *install.DownloadResult
+	dlResults := make([]*install.DownloadResult, 0, len(dlURLs))
 
 	if opts.DryRun {
-		cachePath := dm.CachePath(appName, m.Version, dlURL)
-		s.ctx.GetLogger().Log(fmt.Sprintf("[dry-run] Would download %s", filepath.Base(cachePath)))
-		s.ctx.GetLogger().Log(fmt.Sprintf("[dry-run] Would check hash of %s", filepath.Base(cachePath)))
-	} else {
-		dlResult, err = dm.Download(appName, m.Version, dlURL, !opts.NoCache, opts.Proxy)
-		if err != nil {
-			result.Error = fmt.Errorf("download failed: %w", err)
-			return result
+		for _, dlURL := range dlURLs {
+			cachePath := dm.CachePath(appName, m.Version, dlURL)
+			s.ctx.GetLogger().Dry("download", filepath.Base(cachePath))
+			s.ctx.GetLogger().Dry("hash", filepath.Base(cachePath))
 		}
-		if dlResult.Downloaded {
-			if !dlResult.UsedAria2 {
-				s.ctx.GetLogger().Log(fmt.Sprintf("Downloaded %s", filepath.Base(dlResult.CachePath)))
+	} else {
+		for _, dlURL := range dlURLs {
+			dlResult, err := dm.Download(appName, m.Version, dlURL, !opts.NoCache, opts.Proxy)
+			if err != nil {
+				result.Error = fmt.Errorf("download failed: %w", err)
+				return result
 			}
-		} else {
-			s.ctx.GetLogger().Log(fmt.Sprintf("Loading %s from cache", filepath.Base(dlResult.CachePath)))
+			if dlResult.Downloaded {
+				if !dlResult.UsedAria2 {
+					s.ctx.GetLogger().Done("download", filepath.Base(dlResult.CachePath))
+				}
+			} else {
+				s.ctx.GetLogger().Done("cache", filepath.Base(dlResult.CachePath))
+			}
+			dlResults = append(dlResults, dlResult)
 		}
 
 		// Verify hash before uninstalling.
 		if !opts.SkipHash {
-			expectedHash, err := resolveHash(m, arch)
-			if err == nil && expectedHash != nil {
-				hashFormat, parseErr := install.ParseHash(*expectedHash)
+			expectedHashes := resolveHashes(m, arch)
+			for i, dlResult := range dlResults {
+				expectedHash := hashAt(expectedHashes, i)
+				if expectedHash == "" {
+					continue
+				}
+				hashFormat, parseErr := install.ParseHash(expectedHash)
 				if parseErr != nil {
 					result.Error = fmt.Errorf("failed to parse hash: %w", parseErr)
 					return result
@@ -313,9 +328,9 @@ func (s *UpdateService) updateSingle(app InstalledApp, status AppStatusResult, o
 	result.NewVersion = installResult.Version
 
 	if opts.DryRun {
-		s.ctx.GetLogger().Success(fmt.Sprintf("[dry-run] '%s' (%s) was installed successfully!", app.Name, result.NewVersion))
+		s.ctx.GetLogger().Dry(app.Name, fmt.Sprintf("would install %s", result.NewVersion))
 	} else {
-		s.ctx.GetLogger().Success(fmt.Sprintf("'%s' (%s) was installed successfully!", app.Name, result.NewVersion))
+		s.ctx.GetLogger().Done(app.Name, fmt.Sprintf("upgraded to %s", result.NewVersion))
 	}
 	result.Success = true
 	return result

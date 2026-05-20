@@ -2,14 +2,12 @@ package commands
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 	"go.noz.one/scg/internal/cmdctx"
 	"go.noz.one/scg/internal/install"
 	"go.noz.one/scg/internal/scoop"
 	"go.noz.one/scg/internal/service"
-	"go.noz.one/scg/internal/ui"
 )
 
 // NewInstallCommand creates the install subcommand.
@@ -28,7 +26,7 @@ func NewInstallCommand() *cobra.Command {
 
 			// Verify scoop is installed.
 			if err := install.EnsureScoopInstalled(); err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "%s %v\n", ui.Warning("!"), err)
+				ctx.GetLogger().Warn(err.Error())
 				return err
 			}
 
@@ -63,6 +61,8 @@ func NewInstallCommand() *cobra.Command {
 			if failed > 0 {
 				return fmt.Errorf("%d app(s) failed to install", failed)
 			}
+			ctx.GetLogger().Header("Summary")
+			ctx.GetLogger().Done("install", fmt.Sprintf("%d installed, %d skipped", installed, skipped))
 			return nil
 		},
 	}

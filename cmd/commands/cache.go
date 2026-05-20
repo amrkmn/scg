@@ -57,7 +57,7 @@ of an app.`,
 
 			case "rm", "remove", "delete", "del":
 				if len(args) < 2 && !flagAll {
-					_, _ = fmt.Fprintf(os.Stderr, "ERROR: specify app name(s) or '*'\n")
+					ctx.GetLogger().Error("specify app name(s) or '*'")
 					return nil
 				}
 				apps := args[1:]
@@ -131,9 +131,11 @@ func removeCache(ctx *app.Context, apps []string, removeAll bool, scope scoop.In
 
 func displayCacheList(result service.CacheResult, verbose bool) {
 	if len(result.Entries) == 0 {
-		_, _ = fmt.Fprintln(os.Stdout, ui.Dim("Cache is empty."))
+		_, _ = fmt.Fprintln(os.Stdout, ui.Skip("cache", "empty"))
 		return
 	}
+
+	_, _ = fmt.Fprintln(os.Stdout, ui.Heading("Cache"))
 
 	// Calculate column widths based on content
 	maxApp := ui.VisualLength("Name")
@@ -180,27 +182,29 @@ func displayCacheList(result service.CacheResult, verbose bool) {
 	// Print errors if any
 	if len(result.Errors) > 0 {
 		for _, err := range result.Errors {
-			_, _ = fmt.Fprintf(os.Stderr, "%s %s\n", ui.Warning("!"), err)
+			_, _ = fmt.Fprintln(os.Stderr, ui.WarnLine(err))
 		}
 	}
 }
 
 func displayCacheRemove(result service.CacheResult, dryRun bool) {
 	if result.FilesRemoved == 0 {
-		_, _ = fmt.Fprintln(os.Stdout, "Nothing to remove.")
+		_, _ = fmt.Fprintln(os.Stdout, ui.Skip("cache", "nothing to remove"))
 		return
 	}
+
+	_, _ = fmt.Fprintln(os.Stdout, ui.Heading("Removing cache files"))
 
 	action := "Removed"
 	if dryRun {
 		action = "Would remove"
-		_, _ = fmt.Fprintln(os.Stdout, ui.Dim("(dry run — no files will be removed)"))
+		_, _ = fmt.Fprintln(os.Stdout, ui.Dry("cache", "no files will be removed"))
 	}
 
 	// Show what was removed
 	if dryRun || result.FilesRemoved <= 5 {
 		for _, e := range result.Entries {
-			_, _ = fmt.Fprintf(os.Stdout, "  %s %s\n", ui.Dim(e.Name), ui.Dim(ui.FormatSize(e.Size)))
+			_, _ = fmt.Fprintln(os.Stdout, ui.Detail(fmt.Sprintf("%s %s", ui.Dim(e.Name), ui.Dim(ui.FormatSize(e.Size)))))
 		}
 	}
 
@@ -210,13 +214,18 @@ func displayCacheRemove(result service.CacheResult, dryRun bool) {
 		ui.FormatSize(result.BytesFreed),
 	}
 
-	_, _ = fmt.Fprintf(os.Stdout, "%s %s: %s\n", ui.Success("✓"), action, strings.Join(parts, ", "))
+	_, _ = fmt.Fprintln(os.Stdout, ui.Heading("Summary"))
+	status := ui.Done(strings.ToLower(action), strings.Join(parts, ", "))
+	if dryRun {
+		status = ui.Dry(strings.ToLower(action), strings.Join(parts, ", "))
+	}
+	_, _ = fmt.Fprintln(os.Stdout, status)
 
 	// Show errors
 	if len(result.Errors) > 0 {
 		_, _ = fmt.Fprintln(os.Stdout, "")
 		for _, err := range result.Errors {
-			_, _ = fmt.Fprintf(os.Stderr, "%s %s\n", ui.Warning("!"), err)
+			_, _ = fmt.Fprintln(os.Stderr, ui.WarnLine(err))
 		}
 	}
 }

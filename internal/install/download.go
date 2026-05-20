@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"go.noz.one/scg/internal/scoop"
+	"go.noz.one/scg/internal/ui"
 )
 
 // DownloadManager handles downloading files to the Scoop cache directory.
@@ -33,6 +34,7 @@ type aria2Config struct {
 	MaxConnectionPerServer int
 	MinSplitSize           string
 	Options                []string
+	Proxy                  string
 }
 
 // NewDownloadManager creates a DownloadManager for the given scope.
@@ -180,25 +182,28 @@ func (dm *DownloadManager) Download(app, version, downloadURL string, useCache b
 	}
 
 	cfg := loadAria2Config()
+	if proxy == "" {
+		proxy = cfg.Proxy
+	}
 
 	// Try aria2 first if enabled by config.
 	if cfg.Enabled {
 		if aria2Path, err := FindAria2(); err == nil {
-			_, _ = fmt.Fprintln(os.Stdout, "Starting download with aria2 ...")
+			_, _ = fmt.Fprintln(os.Stdout, "==> Downloading with aria2")
 			result, err := dm.downloadWithAria2(aria2Path, cachePath, downloadURL, proxy, cfg)
 			if err == nil {
 				return result, nil
 			}
 			// aria2 failed, fall back to HTTP.
 			if dm.verbose {
-				fmt.Printf("aria2 download failed, falling back to HTTP: %v\n", err)
+				fmt.Printf("warn aria2 failed; falling back to HTTP: %v\n", err)
 			}
 		}
 	}
 
 	// Fall back to HTTP download.
 	if dm.verbose {
-		fmt.Printf("Downloading via HTTP: %s\n", downloadURL)
+		fmt.Printf("==> Downloading via HTTP\n  %s\n", downloadURL)
 	}
 	if err := dm.downloadHTTP(cachePath, app, downloadURL, proxy); err != nil {
 		return nil, fmt.Errorf("failed to download %s: %w", downloadURL, err)
@@ -227,6 +232,7 @@ func loadAria2Config() aria2Config {
 		MaxConnectionPerServer: intFromConfig(cfg["aria2-max-connection-per-server"], 5),
 		MinSplitSize:           stringFromConfig(cfg["aria2-min-split-size"], "5M"),
 		Options:                stringSliceFromConfig(cfg["aria2-options"]),
+		Proxy:                  stringFromConfig(cfg["proxy"], ""),
 	}
 }
 
@@ -548,9 +554,9 @@ func (pw *progressWriter) print() {
 	}
 
 	if pw.total <= 0 {
-		// Unknown size — show a spinner-style counter.
-		frames := []string{"   ", ".  ", ".. ", "..."}
-		msg := fmt.Sprintf("Downloading %s (%s) [%s]", app, humanSize(pw.written), frames[pw.prints%int64(len(frames))])
+		// Unknown size: show the shared wait spinner with the byte counter.
+		frame := ui.SpinnerFrames[pw.prints%int64(len(ui.SpinnerFrames))]
+		msg := fmt.Sprintf("  %s downloading %s (%s)", ui.Cyan(frame), app, humanSize(pw.written))
 		padding := ""
 		if pw.width > len(msg) {
 			padding = strings.Repeat(" ", pw.width-len(msg))
@@ -573,7 +579,7 @@ func (pw *progressWriter) print() {
 		bar += ">"
 		bar += strings.Repeat(" ", barWidth-filled-1)
 	}
-	msg := fmt.Sprintf("Downloading %s (%s) [%s] %.0f%%", app, humanSize(pw.total), bar, pct)
+	msg := fmt.Sprintf("  downloading %s (%s) [%s] %.0f%%", app, humanSize(pw.total), bar, pct)
 	padding := ""
 	if pw.width > len(msg) {
 		padding = strings.Repeat(" ", pw.width-len(msg))

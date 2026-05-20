@@ -21,12 +21,13 @@ func NewShimCommand() *cobra.Command {
 		Short: "Manage Scoop shims",
 		Long: `Manipulate Scoop shims.
 
-Available subcommands: add, rm, list, info.`,
+Available subcommands: add, rm, list, info, alter.`,
 		Example: `  scg shim list
   scg shim add myapp "C:\Program Files\MyApp\myapp.exe"
   scg shim add myapp "C:\Program Files\MyApp\myapp.exe" -- --flag
   scg shim rm myapp
-  scg shim info git`,
+  scg shim info git
+  scg shim alter git`,
 	}
 
 	cmd.AddCommand(
@@ -34,8 +35,93 @@ Available subcommands: add, rm, list, info.`,
 		newShimRmCmd(),
 		newShimListCmd(),
 		newShimInfoCmd(),
+		newShimAlterCmd(),
 	)
 
+	return cmd
+}
+
+func newShimAlterCmd() *cobra.Command {
+	var flagGlobal bool
+
+	cmd := &cobra.Command{
+		Use:   "alter <name> [source]",
+		Short: "Switch a shim to an alternative source",
+		Long:  "Switch a shim to one of its saved alternative sources. If source is omitted, the first alternative is used.",
+		Example: `  scg shim alter git
+  scg shim alter git mingit
+  scg shim alter -g python`,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmdctx.MustFromCmd(cmd)
+			logger := ctx.GetLogger()
+
+			name := args[0]
+			paths := scoop.ResolvePaths(scoop.ScopeUser)
+			if flagGlobal {
+				paths = scoop.ResolvePaths(scoop.ScopeGlobal)
+			}
+
+			shimPath := filepath.Join(paths.Shims, name+".shim")
+			if _, err := os.Stat(shimPath); err != nil {
+				scopeLabel := "local"
+				otherScope := scoop.ScopeGlobal
+				if flagGlobal {
+					scopeLabel = "global"
+					otherScope = scoop.ScopeUser
+				}
+				logger.Error(fmt.Sprintf("%s shim not found: %s", scopeLabel, name))
+				otherPaths := scoop.ResolvePaths(otherScope)
+				if _, otherErr := os.Stat(filepath.Join(otherPaths.Shims, name+".shim")); otherErr == nil {
+					scopeFlag := ""
+					if !flagGlobal {
+						scopeFlag = " --global"
+					}
+					logger.Info(fmt.Sprintf("shim exists in the other scope; run 'scg shim alter %s%s'", name, scopeFlag))
+				}
+				return nil
+			}
+
+			currentSource := appFromPath(readShimTarget(shimPath))
+			if currentSource == "" {
+				currentSource = "External"
+			}
+			alternatives := findAlternatives(name, paths.Shims, currentSource)
+			if len(alternatives) == 0 {
+				logger.Skip(name, "no alternatives found")
+				return nil
+			}
+
+			source := alternatives[0]
+			if len(args) == 2 {
+				source = args[1]
+				found := false
+				for _, alt := range alternatives {
+					if strings.EqualFold(alt, source) {
+						source = alt
+						found = true
+						break
+					}
+				}
+				if !found {
+					return fmt.Errorf("alternative %q not found for shim %q (available: %s)", source, name, strings.Join(alternatives, ", "))
+				}
+			}
+
+			if strings.EqualFold(source, currentSource) {
+				logger.Skip(name, fmt.Sprintf("already from %s", currentSource))
+				return nil
+			}
+
+			if err := alterShimSource(paths.Shims, name, currentSource, source); err != nil {
+				return err
+			}
+			logger.Done(name, fmt.Sprintf("using %s as default", source))
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVarP(&flagGlobal, "global", "g", false, "Alter a global shim")
 	return cmd
 }
 
@@ -55,7 +141,7 @@ name or via PATH lookup. Arguments after '--' are passed as default args.`,
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmdctx.MustFromCmd(cmd)
-			_ = ctx
+			logger := ctx.GetLogger()
 
 			name := args[0]
 			commandPath := args[1]
@@ -75,13 +161,13 @@ name or via PATH lookup. Arguments after '--' are passed as default args.`,
 				var err error
 				resolvedPath, err = resolveShimOrPath(commandPath, flagGlobal)
 				if err != nil {
-					_, _ = fmt.Fprintf(os.Stderr, "%s Command path does not exist: %s\n", ui.Error("-"), commandPath)
+					logger.Error(fmt.Sprintf("command path does not exist: %s", commandPath))
 					return err
 				}
 			}
 
 			if _, err := os.Stat(resolvedPath); err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "%s Command path does not exist: %s\n", ui.Error("-"), commandPath)
+				logger.Error(fmt.Sprintf("command path does not exist: %s", commandPath))
 				return err
 			}
 
@@ -99,7 +185,9 @@ name or via PATH lookup. Arguments after '--' are passed as default args.`,
 			if flagGlobal {
 				scopeLabel = "global"
 			}
-			fmt.Printf("%s Added %s shim %s -> %s\n", ui.Success("+"), scopeLabel, ui.Cyan(name), resolvedPath)
+			logger.Header("Adding shim")
+			logger.Detail(fmt.Sprintf("%s -> %s", name, resolvedPath))
+			logger.Done("shim", fmt.Sprintf("added %s %s", scopeLabel, name))
 			return nil
 		},
 	}
@@ -120,7 +208,7 @@ func newShimRmCmd() *cobra.Command {
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmdctx.MustFromCmd(cmd)
-			_ = ctx
+			logger := ctx.GetLogger()
 
 			scope := scoop.ScopeUser
 			if flagGlobal {
@@ -129,6 +217,7 @@ func newShimRmCmd() *cobra.Command {
 			paths := scoop.ResolvePaths(scope)
 
 			var failed []string
+			logger.Header("Removing shims")
 			for _, name := range args {
 				shimPath := filepath.Join(paths.Shims, name+".shim")
 				exePath := filepath.Join(paths.Shims, name+".exe")
@@ -146,7 +235,7 @@ func newShimRmCmd() *cobra.Command {
 				if !found {
 					failed = append(failed, name)
 				} else {
-					fmt.Printf("%s Removed shim %s\n", ui.Success("-"), ui.Cyan(name))
+					logger.Done("shim", name)
 				}
 			}
 
@@ -156,7 +245,7 @@ func newShimRmCmd() *cobra.Command {
 					scopeLabel = "global"
 				}
 				for _, name := range failed {
-					_, _ = fmt.Fprintf(os.Stderr, "%s %s shim not found: %s\n", ui.Error("-"), scopeLabel, name)
+					logger.Error(fmt.Sprintf("%s shim not found: %s", scopeLabel, name))
 				}
 			}
 
@@ -180,13 +269,13 @@ func newShimListCmd() *cobra.Command {
   scg shim list -g`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmdctx.MustFromCmd(cmd)
-			_ = ctx
+			logger := ctx.GetLogger()
 
 			var patterns []*regexp.Regexp
 			for _, p := range args {
 				re, err := regexp.Compile(p)
 				if err != nil {
-					_, _ = fmt.Fprintf(os.Stderr, "%s Invalid pattern: %s\n", ui.Error("-"), p)
+					logger.Error(fmt.Sprintf("invalid pattern: %s", p))
 					return err
 				}
 				patterns = append(patterns, re)
@@ -205,9 +294,11 @@ func newShimListCmd() *cobra.Command {
 			}
 
 			if len(shims) == 0 {
-				fmt.Println("No shims found.")
+				logger.Skip("shims", "none found")
 				return nil
 			}
+
+			logger.Header("Shims")
 
 			sort.Slice(shims, func(i, j int) bool {
 				return shims[i].Name < shims[j].Name
@@ -262,7 +353,7 @@ func newShimInfoCmd() *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmdctx.MustFromCmd(cmd)
-			_ = ctx
+			logger := ctx.GetLogger()
 
 			name := args[0]
 			paths := scoop.ResolvePaths(scoop.ScopeUser)
@@ -275,17 +366,17 @@ func newShimInfoCmd() *cobra.Command {
 
 			shimData, shimErr := os.ReadFile(shimPath)
 			if shimErr != nil && flagGlobal {
-				_, _ = fmt.Fprintf(os.Stderr, "%s Global shim not found: %s\n", ui.Error("-"), name)
+				logger.Error(fmt.Sprintf("global shim not found: %s", name))
 				return nil
 			} else if shimErr != nil {
 				globalPaths := scoop.ResolvePaths(scoop.ScopeGlobal)
 				globalShim := filepath.Join(globalPaths.Shims, name+".shim")
 				if _, err := os.ReadFile(globalShim); err == nil {
-					_, _ = fmt.Fprintf(os.Stdout, "%s not found in local shims, but a global shim exists.\n", name)
-					_, _ = fmt.Fprintf(os.Stdout, "Run 'scg shim info %s --global' to show its info.\n", name)
+					logger.Info(fmt.Sprintf("%s not found in local shims, but a global shim exists", name))
+					logger.Detail(fmt.Sprintf("run 'scg shim info %s --global' to show its info", name))
 					return nil
 				}
-				_, _ = fmt.Fprintf(os.Stderr, "%s Local shim not found: %s\n", ui.Error("-"), name)
+				logger.Error(fmt.Sprintf("local shim not found: %s", name))
 				return nil
 			}
 
@@ -313,6 +404,7 @@ func newShimInfoCmd() *cobra.Command {
 
 			source := appFromPath(targetPath)
 
+			logger.Header("Shim " + name)
 			fmt.Printf("Name:      %s\n", name)
 			fmt.Printf("Path:      %s\n", targetPath)
 			if args2 != "" {
@@ -429,17 +521,64 @@ func findAlternatives(name, shimDir, currentSource string) []string {
 	if err != nil {
 		return nil
 	}
-	prefix := name + "."
+	prefix := name + ".shim."
 	for _, e := range entries {
 		fn := e.Name()
-		if strings.HasPrefix(fn, prefix) && fn != name+".shim" && fn != name+".exe" && fn != name+".cmd" && fn != name+".ps1" {
+		if strings.HasPrefix(fn, prefix) {
 			alt := strings.TrimPrefix(fn, prefix)
 			if alt != currentSource && alt != "" {
 				alts = append(alts, alt)
 			}
 		}
 	}
+	sort.Strings(alts)
 	return alts
+}
+
+func readShimTarget(shimPath string) string {
+	data, err := os.ReadFile(shimPath)
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(strings.ToLower(line), "path") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				return strings.Trim(strings.TrimSpace(parts[1]), `"`)
+			}
+		}
+	}
+	return ""
+}
+
+func alterShimSource(shimDir, name, currentSource, newSource string) error {
+	base := filepath.Join(shimDir, name)
+	for _, ext := range []string{".shim", ".exe", ".cmd", ".ps1"} {
+		current := base + ext
+		if _, err := os.Stat(current); err != nil {
+			continue
+		}
+
+		oldAlt := current + "." + currentSource
+		newAlt := current + "." + newSource
+		if _, err := os.Stat(newAlt); err != nil {
+			if ext == ".shim" {
+				return fmt.Errorf("alternative %q is missing %s", newSource, filepath.Base(newAlt))
+			}
+			continue
+		}
+
+		_ = os.Remove(oldAlt)
+		if err := os.Rename(current, oldAlt); err != nil {
+			return fmt.Errorf("failed to save current shim %s: %w", filepath.Base(current), err)
+		}
+		if err := os.Rename(newAlt, current); err != nil {
+			_ = os.Rename(oldAlt, current)
+			return fmt.Errorf("failed to activate alternative %s: %w", filepath.Base(newAlt), err)
+		}
+	}
+	return nil
 }
 
 func resolveShimOrPath(name string, global bool) (string, error) {

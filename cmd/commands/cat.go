@@ -27,7 +27,7 @@ scg cat extras/enso`,
 			// Find the manifest file.
 			all := ctx.Services.Manifests.FindAllManifests(input)
 			if len(all) == 0 {
-				_, _ = fmt.Fprintf(os.Stderr, "Manifest for '%s' not found\n", input)
+				ctx.GetLogger().Error(fmt.Sprintf("manifest for %q not found", input))
 				return os.ErrNotExist
 			}
 

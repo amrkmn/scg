@@ -56,8 +56,15 @@ func (s *ConfigService) Save(config map[string]any) error {
 // Get returns the value for key and whether it exists.
 func (s *ConfigService) Get(key string) (any, bool) {
 	config, _ := s.Load()
-	val, ok := config[key]
-	return val, ok
+	if val, ok := config[key]; ok {
+		return val, true
+	}
+	for k, val := range config {
+		if strings.EqualFold(k, key) {
+			return val, true
+		}
+	}
+	return nil, false
 }
 
 // Set sets key to value in the config file.
@@ -71,6 +78,11 @@ func (s *ConfigService) Set(key string, value any) error {
 func (s *ConfigService) Delete(key string) error {
 	config, _ := s.Load()
 	delete(config, key)
+	for k := range config {
+		if strings.EqualFold(k, key) {
+			delete(config, k)
+		}
+	}
 	return s.Save(config)
 }
 

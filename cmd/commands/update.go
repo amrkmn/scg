@@ -2,14 +2,12 @@ package commands
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 	"go.noz.one/scg/internal/cmdctx"
 	"go.noz.one/scg/internal/install"
 	"go.noz.one/scg/internal/scoop"
 	"go.noz.one/scg/internal/service"
-	"go.noz.one/scg/internal/ui"
 )
 
 // NewUpdateCommand creates the update subcommand.
@@ -28,7 +26,7 @@ func NewUpdateCommand() *cobra.Command {
 			ctx := cmdctx.MustFromCmd(cmd)
 
 			if err := install.EnsureScoopInstalled(); err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "%s %v\n", ui.Warning("!"), err)
+				ctx.GetLogger().Warn(err.Error())
 				return err
 			}
 
@@ -69,6 +67,14 @@ func NewUpdateCommand() *cobra.Command {
 
 			if failed > 0 {
 				return fmt.Errorf("%d app(s) failed to update", failed)
+			}
+			if !flagQuiet {
+				ctx.GetLogger().Header("Summary")
+				if flagDryRun {
+					ctx.GetLogger().Dry("update", fmt.Sprintf("%d would update, %d skipped", updated, skipped))
+				} else {
+					ctx.GetLogger().Done("update", fmt.Sprintf("%d updated, %d skipped", updated, skipped))
+				}
 			}
 			return nil
 		},

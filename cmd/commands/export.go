@@ -3,13 +3,11 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"go.noz.one/scg/internal/cmdctx"
 	"go.noz.one/scg/internal/scoop"
-	"go.noz.one/scg/internal/ui"
 )
 
 func NewExportCommand() *cobra.Command {
@@ -42,7 +40,7 @@ func NewExportCommand() *cobra.Command {
 
 			buckets, err := ctx.Services.Buckets.List("")
 			if err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "%s Failed to list buckets: %v\n", ui.Warning("!"), err)
+				ctx.GetLogger().Warn(fmt.Sprintf("failed to list buckets: %v", err))
 			} else {
 				type bucketExport struct {
 					Name   string `json:"name"`
@@ -60,7 +58,7 @@ func NewExportCommand() *cobra.Command {
 
 			installed, err := ctx.Services.Apps.ListInstalled("")
 			if err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "%s Failed to list installed apps: %v\n", ui.Warning("!"), err)
+				ctx.GetLogger().Warn(fmt.Sprintf("failed to list installed apps: %v", err))
 			} else {
 				type appExport struct {
 					Name    string `json:"name"`

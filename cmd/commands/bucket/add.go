@@ -20,6 +20,7 @@ func NewAddCommand() *cobra.Command {
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmdctx.FromCmd(cmd)
+			logger := ctx.GetLogger()
 
 			name := args[0]
 			var url string
@@ -29,8 +30,7 @@ func NewAddCommand() *cobra.Command {
 			} else {
 				url = known.GetKnownBucket(name)
 				if url == "" {
-					_, _ = fmt.Fprintf(os.Stderr, "%s bucket '%s' not found in known buckets and no URL provided\n",
-						ui.Error("error:"), name)
+					logger.Error(fmt.Sprintf("bucket %q not found in known buckets and no URL provided", name))
 					os.Exit(1)
 				}
 			}
@@ -40,7 +40,7 @@ func NewAddCommand() *cobra.Command {
 				scope = scoop.ScopeGlobal
 			}
 
-			spinner := ui.NewSpinner(fmt.Sprintf("Adding bucket '%s'...", name))
+			spinner := ui.NewSpinner(fmt.Sprintf("Adding bucket %s", name))
 			spinner.Start()
 
 			err := ctx.Services.Buckets.Add(name, url, scope, func(current, total int) {})
@@ -48,11 +48,11 @@ func NewAddCommand() *cobra.Command {
 			spinner.Stop()
 
 			if err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "%s Failed to add bucket '%s': %v\n", ui.Error("error:"), name, err)
+				logger.Error(fmt.Sprintf("failed to add bucket %q: %v", name, err))
 				os.Exit(1)
 			}
 
-			fmt.Printf("%s Bucket '%s' added successfully\n", ui.Success("success:"), name)
+			logger.Done("bucket", fmt.Sprintf("added %s", name))
 			return nil
 		},
 	}

@@ -22,12 +22,12 @@ func NewHomeCommand() *cobra.Command {
 
 			_, manifest := ctx.Services.Manifests.FindManifestPair(args[0])
 			if manifest == nil {
-				_, _ = fmt.Fprintf(os.Stderr, "Could not find manifest for '%s'\n", args[0])
+				ctx.GetLogger().Error(fmt.Sprintf("could not find manifest for %q", args[0]))
 				return os.ErrNotExist
 			}
 
 			if manifest.Manifest.Homepage == "" {
-				_, _ = fmt.Fprintf(os.Stderr, "Could not find homepage in manifest for '%s'\n", args[0])
+				ctx.GetLogger().Error(fmt.Sprintf("could not find homepage in manifest for %q", args[0]))
 				return fmt.Errorf("no homepage defined")
 			}
 

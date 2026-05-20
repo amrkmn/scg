@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"go.noz.one/scg/internal/cmdctx"
@@ -24,18 +25,25 @@ func NewSearchCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmdctx.MustFromCmd(cmd)
 			query := args[0]
+			installedApps, err := searchInstalledApps(ctx.Services.Apps, flagInstalled || flagVerbose)
+			if err != nil {
+				return err
+			}
 
 			results := ctx.Services.Search.SearchBuckets(query, service.SearchOptions{
 				Bucket:        flagBucket,
 				CaseSensitive: false,
 				GlobalOnly:    flagGlobal,
 				InstalledOnly: flagInstalled,
+				InstalledApps: installedApps,
 			})
 
 			if len(results) == 0 {
-				_, _ = fmt.Fprintf(os.Stdout, "%s No results found for '%s'.\n", ui.Warning("!"), query)
+				_, _ = fmt.Fprintln(os.Stdout, ui.Skip("search", fmt.Sprintf("no results for %s", query)))
 				return nil
 			}
+
+			_, _ = fmt.Fprintln(os.Stdout, ui.Heading("Search results"))
 
 			// Group by bucket.
 			bucketMap := make(map[string][]service.SearchResult)
@@ -84,7 +92,7 @@ func NewSearchCommand() *cobra.Command {
 				_, _ = fmt.Fprintln(os.Stdout)
 			}
 
-			_, _ = fmt.Fprintf(os.Stdout, "%s\n", ui.Blue(fmt.Sprintf("Found %d package(s).", len(results))))
+			_, _ = fmt.Fprintf(os.Stdout, "%s\n", ui.Done("search", fmt.Sprintf("%d package(s)", len(results))))
 			return nil
 		},
 	}
@@ -94,4 +102,20 @@ func NewSearchCommand() *cobra.Command {
 	cmd.Flags().BoolVarP(&flagInstalled, "installed", "i", false, "Show only installed apps")
 	cmd.Flags().StringVarP(&flagBucket, "bucket", "b", "", "Filter by bucket name")
 	return cmd
+}
+
+func searchInstalledApps(apps *service.AppsService, needed bool) (map[string]*service.InstalledApp, error) {
+	if !needed {
+		return nil, nil
+	}
+	installed, err := apps.ListInstalled("")
+	if err != nil {
+		return nil, err
+	}
+	byName := make(map[string]*service.InstalledApp, len(installed))
+	for i := range installed {
+		app := installed[i]
+		byName[strings.ToLower(app.Name)] = &app
+	}
+	return byName, nil
 }

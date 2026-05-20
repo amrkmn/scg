@@ -2,12 +2,10 @@ package commands
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 	"go.noz.one/scg/internal/cmdctx"
 	"go.noz.one/scg/internal/scoop"
-	"go.noz.one/scg/internal/ui"
 )
 
 // NewUnholdCommand creates the unhold subcommand.
@@ -28,18 +26,18 @@ func NewUnholdCommand() *cobra.Command {
 			}
 
 			if app == "scoop" {
-				fmt.Printf("%s scoop is no longer held and can be updated.\n", ui.Success("+"))
+				ctx.GetLogger().Done("scoop", "unheld")
 				return nil
 			}
 
 			installed, err := ctx.Services.Apps.GetInstalledApp(app, scope)
 			if err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "%s '%s' is not installed in %s scope\n", ui.Error("-"), app, scope)
+				ctx.GetLogger().Error(fmt.Sprintf("%s is not installed in %s scope", app, scope))
 				return err
 			}
 
 			if !installed.Held {
-				fmt.Printf("%s '%s' is not held.\n", ui.Info("i"), app)
+				ctx.GetLogger().Skip(app, "not held")
 				return nil
 			}
 
@@ -47,7 +45,7 @@ func NewUnholdCommand() *cobra.Command {
 				return fmt.Errorf("failed to unhold '%s': %w", app, err)
 			}
 
-			fmt.Printf("%s '%s' is no longer held and can be updated.\n", ui.Success("+"), app)
+			ctx.GetLogger().Done(app, "unheld")
 			return nil
 		},
 	}

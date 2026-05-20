@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/term"
 )
 
 // clearLine clears the current terminal line and returns the cursor to column 0.
@@ -22,7 +24,7 @@ type Spinner struct {
 }
 
 // SpinnerFrames are the animation frames used by Spinner, exported for reuse.
-var SpinnerFrames = []string{"   ", ".  ", ".. ", "..."}
+var SpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 // SpinnerInterval is the tick interval used by Spinner, exported for reuse.
 const SpinnerInterval = 150 * time.Millisecond
@@ -53,7 +55,7 @@ func (s *Spinner) Start() {
 				s.frame++
 				msg := s.message
 				s.mu.Unlock()
-				_, _ = fmt.Fprintf(os.Stdout, "%s%s%s", clearLine, msg, f)
+				_, _ = fmt.Fprintf(os.Stdout, "%s%s %s", clearLine, Cyan(f), msg)
 			}
 		}
 	}()
@@ -76,7 +78,7 @@ func (s *Spinner) stop() {
 func (s *Spinner) Succeed(msg string) {
 	s.stop()
 	if msg != "" {
-		_, _ = fmt.Fprintln(os.Stdout, Green("✓")+" "+msg)
+		_, _ = fmt.Fprintln(os.Stdout, Done(msg, ""))
 	}
 }
 
@@ -84,7 +86,7 @@ func (s *Spinner) Succeed(msg string) {
 func (s *Spinner) Fail(msg string) {
 	s.stop()
 	if msg != "" {
-		_, _ = fmt.Fprintln(os.Stdout, Red("✗")+" "+msg)
+		_, _ = fmt.Fprintln(os.Stdout, FailLine(msg))
 	}
 }
 
@@ -202,8 +204,9 @@ func (p *ProgressBar) render() {
 	total := p.total
 	msg := p.message
 	step := p.step
-	barW := p.barW
 	p.mu.Unlock()
+
+	barW := p.renderWidth(current, total, msg, step)
 
 	var pct float64
 	if total > 0 {
@@ -222,4 +225,25 @@ func (p *ProgressBar) render() {
 
 	line := fmt.Sprintf("%s[%s] %d/%d %s%s", clearLine, bar, current, total, msg, suffix)
 	_, _ = fmt.Fprint(os.Stdout, line)
+}
+
+func (p *ProgressBar) renderWidth(current, total int, msg, step string) int {
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil || width <= 0 {
+		return p.barW
+	}
+
+	suffix := ""
+	if step != "" {
+		suffix = " " + step
+	}
+	fixed := len(fmt.Sprintf("[] %d/%d %s%s", current, total, msg, suffix))
+	barW := width - fixed - 1
+	if barW < 8 {
+		barW = 8
+	}
+	if barW > 50 {
+		barW = 50
+	}
+	return barW
 }

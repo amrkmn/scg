@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 	"go.noz.one/scg/internal/cmdctx"
@@ -36,42 +38,90 @@ func NewConfigCommand() *cobra.Command {
 					return err
 				}
 				if len(config) == 0 {
-					_, _ = fmt.Fprintln(os.Stdout, ui.Dim("(no config values set)"))
+					ctx.GetLogger().Skip("config", "no values set")
 					return nil
 				}
+				ctx.GetLogger().Header("Config")
 				keys := make([]string, 0, len(config))
 				for k := range config {
 					keys = append(keys, k)
 				}
 				sort.Strings(keys)
 				for _, k := range keys {
-					_, _ = fmt.Fprintf(os.Stdout, "%s: %v\n", ui.Green(k), config[k])
+					_, _ = fmt.Fprintf(os.Stdout, "%s: %s\n", ui.Green(k), formatConfigListValue(config[k]))
 				}
 			case 1:
 				// Get.
 				val, ok := svc.Get(args[0])
 				if !ok {
-					_, _ = fmt.Fprintf(os.Stderr, "Key '%s' not found\n", args[0])
+					ctx.GetLogger().Skip(args[0], "key not found")
 					return nil
 				}
-				_, _ = fmt.Fprintln(os.Stdout, val)
+				printConfigValue(val)
 			case 2:
 				// Delete or set.
 				if args[0] == "rm" {
 					if err := svc.Delete(args[1]); err != nil {
 						return err
 					}
-					_, _ = fmt.Fprintf(os.Stdout, "%s Deleted key '%s'\n", ui.Success("✓"), args[1])
+					ctx.GetLogger().Done(args[1], "deleted")
 				} else {
 					coerced := service.CoerceValue(args[1])
 					if err := svc.Set(args[0], coerced); err != nil {
 						return err
 					}
-					_, _ = fmt.Fprintf(os.Stdout, "%s Set %s = %v\n", ui.Success("✓"), ui.Green(args[0]), coerced)
+					ctx.GetLogger().Done(args[0], fmt.Sprintf("set to %v", coerced))
 				}
 			}
 			return nil
 		},
 	}
 	return cmd
+}
+
+func printConfigValue(value any) {
+	if m, ok := value.(map[string]any); ok {
+		printConfigMap(m)
+		return
+	}
+	_, _ = fmt.Fprintln(os.Stdout, value)
+}
+
+func printConfigMap(m map[string]any) {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, strings.Join(keys, "\t"))
+	separators := make([]string, 0, len(keys))
+	for _, key := range keys {
+		separators = append(separators, strings.Repeat("-", len(key)))
+	}
+	_, _ = fmt.Fprintln(w, strings.Join(separators, "\t"))
+	values := make([]string, 0, len(keys))
+	for _, key := range keys {
+		values = append(values, fmt.Sprint(m[key]))
+	}
+	_, _ = fmt.Fprintln(w, strings.Join(values, "\t"))
+	_ = w.Flush()
+}
+
+func formatConfigListValue(value any) string {
+	m, ok := value.(map[string]any)
+	if !ok {
+		return fmt.Sprint(value)
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%v", key, m[key]))
+	}
+	return "@{" + strings.Join(parts, "; ") + "}"
 }

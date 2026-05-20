@@ -116,7 +116,10 @@ func (s *SearchService) scanBucket(bucket BucketInfo, query, lowerQuery string, 
 			continue
 		}
 		appName := strings.TrimSuffix(e.Name(), ".json")
-		if opts.InstalledOnly && opts.InstalledApps != nil {
+		if opts.InstalledOnly && opts.InstalledApps == nil {
+			return nil
+		}
+		if opts.InstalledOnly {
 			if _, ok := opts.InstalledApps[strings.ToLower(appName)]; !ok {
 				continue
 			}
@@ -142,14 +145,22 @@ func (s *SearchService) scanBucket(bucket BucketInfo, query, lowerQuery string, 
 			if err != nil {
 				continue
 			}
-			results = append(results, SearchResult{
+			r := SearchResult{
 				Name:        c.name,
 				Version:     m.Version,
 				Description: m.Description,
 				Binaries:    ExtractBinaries(m.Bin),
 				Bucket:      bucket.Name,
 				Scope:       bucket.Scope,
-			})
+			}
+			if opts.InstalledApps != nil {
+				if app, ok := opts.InstalledApps[strings.ToLower(c.name)]; ok {
+					if app.Bucket == "" || strings.EqualFold(app.Bucket, bucket.Name) {
+						r.IsInstalled = true
+					}
+				}
+			}
+			results = append(results, r)
 		}
 		return results
 	}

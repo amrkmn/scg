@@ -27,7 +27,7 @@ func NewCheckupCommand() *cobra.Command {
 		Long:    "Performs a series of diagnostic tests to identify things that may cause problems with Scoop.",
 		Example: "  scg checkup",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_ = cmdctx.MustFromCmd(cmd)
+			ctx := cmdctx.MustFromCmd(cmd)
 
 			var results []checkResult
 
@@ -50,23 +50,24 @@ func NewCheckupCommand() *cobra.Command {
 				}
 			}
 
-			fmt.Println()
+			ctx.GetLogger().Header("Checking Scoop environment")
 			for _, r := range results {
 				if r.ok {
-					fmt.Printf("  %s %s\n", ui.Success("✓"), r.label)
+					fmt.Println(ui.Done(r.label, ""))
 				} else {
-					fmt.Printf("  %s %s\n", ui.Error("✗"), r.label)
+					fmt.Println(ui.FailLine(r.label))
 					if r.detail != "" {
-						fmt.Printf("    %s\n", ui.Dim(r.detail))
+						fmt.Println(ui.Detail(ui.Dim("  " + r.detail)))
 					}
 				}
 			}
 
 			fmt.Println()
+			ctx.GetLogger().Header("Summary")
 			if issues == 0 {
-				fmt.Printf("%s No problems identified!\n", ui.Success("✓"))
+				ctx.GetLogger().Done("checkup", "no problems identified")
 			} else {
-				fmt.Printf("%s Found %d potential %s.\n", ui.Warning("!"), issues, pluralize(issues, "problem"))
+				ctx.GetLogger().Warn(fmt.Sprintf("found %d potential %s", issues, pluralize(issues, "problem")))
 			}
 
 			return nil

@@ -2,14 +2,12 @@ package commands
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"go.noz.one/scg/internal/app"
 	"go.noz.one/scg/internal/cmdctx"
 	"go.noz.one/scg/internal/scoop"
-	"go.noz.one/scg/internal/ui"
 )
 
 func NewDependsCommand() *cobra.Command {
@@ -29,21 +27,21 @@ func NewDependsCommand() *cobra.Command {
 
 			deps, err := resolveDependencies(ctx, appName)
 			if err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "%s %v\n", ui.Error("-"), err)
+				ctx.GetLogger().Error(err.Error())
 				return err
 			}
 
 			if len(deps) == 0 {
-				fmt.Printf("%s has no dependencies.\n", appName)
+				ctx.GetLogger().Skip(appName, "no dependencies")
 				return nil
 			}
 
-			fmt.Printf("Dependencies for %s:\n", ui.Cyan(appName))
+			ctx.GetLogger().Header("Dependencies for " + appName)
 			for _, dep := range deps {
 				if dep.Source != "" && dep.Source != "missing" {
-					fmt.Printf("  %s/%s\n", dep.Source, dep.Name)
+					ctx.GetLogger().Detail(dep.Source + "/" + dep.Name)
 				} else {
-					fmt.Printf("  %s\n", dep.Name)
+					ctx.GetLogger().Detail(dep.Name)
 				}
 			}
 			return nil

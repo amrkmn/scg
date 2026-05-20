@@ -20,6 +20,7 @@ func NewRemoveCommand() *cobra.Command {
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmdctx.FromCmd(cmd)
+			logger := ctx.GetLogger()
 
 			name := args[0]
 			scope := scoop.ScopeUser
@@ -27,7 +28,7 @@ func NewRemoveCommand() *cobra.Command {
 				scope = scoop.ScopeGlobal
 			}
 
-			spinner := ui.NewSpinner(fmt.Sprintf("Removing bucket '%s'...", name))
+			spinner := ui.NewSpinner(fmt.Sprintf("Removing bucket %s", name))
 			spinner.Start()
 
 			err := ctx.Services.Buckets.Remove(name, scope)
@@ -35,11 +36,11 @@ func NewRemoveCommand() *cobra.Command {
 			spinner.Stop()
 
 			if err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "%s Failed to remove bucket '%s': %v\n", ui.Error("error:"), name, err)
+				logger.Error(fmt.Sprintf("failed to remove bucket %q: %v", name, err))
 				os.Exit(1)
 			}
 
-			fmt.Printf("%s Bucket '%s' removed\n", ui.Success("success:"), name)
+			logger.Done("bucket", fmt.Sprintf("removed %s", name))
 			return nil
 		},
 	}

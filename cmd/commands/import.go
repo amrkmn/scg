@@ -10,9 +10,8 @@ import (
 	"github.com/spf13/cobra"
 	"go.noz.one/scg/internal/app"
 	"go.noz.one/scg/internal/cmdctx"
-	"go.noz.one/scg/internal/service"
 	"go.noz.one/scg/internal/scoop"
-	"go.noz.one/scg/internal/ui"
+	"go.noz.one/scg/internal/service"
 )
 
 func NewImportCommand() *cobra.Command {
@@ -45,15 +44,15 @@ func NewImportCommand() *cobra.Command {
 			}
 
 			if err := importBuckets(ctx, exportData); err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "%s %v\n", ui.Warning("!"), err)
+				ctx.GetLogger().Warn(err.Error())
 			}
 
 			if err := importConfig(ctx, exportData); err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "%s %v\n", ui.Warning("!"), err)
+				ctx.GetLogger().Warn(err.Error())
 			}
 
 			if err := importApps(ctx, exportData, flagGlobal); err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "%s %v\n", ui.Warning("!"), err)
+				ctx.GetLogger().Warn(err.Error())
 			}
 
 			return nil
@@ -75,7 +74,7 @@ func importBuckets(ctx *app.Context, data map[string]any) error {
 		return fmt.Errorf("invalid buckets format in import file")
 	}
 
-	fmt.Printf("Importing %d bucket(s)...\n", len(bucketList))
+	ctx.GetLogger().Header(fmt.Sprintf("Importing %d bucket(s)", len(bucketList)))
 
 	for _, b := range bucketList {
 		bm, ok := b.(map[string]any)
@@ -99,20 +98,21 @@ func importBuckets(ctx *app.Context, data map[string]any) error {
 		}
 
 		if found {
-			fmt.Printf("  %s Bucket '%s' already added\n", ui.Success("✓"), name)
+			ctx.GetLogger().Skip(name, "bucket already added")
 			continue
 		}
 
 		if source == "" {
-			_, _ = fmt.Fprintf(os.Stderr, "  %s Bucket '%s' has no source URL, skipping\n", ui.Warning("!"), name)
+			ctx.GetLogger().Warn(fmt.Sprintf("bucket %s has no source URL; skipping", name))
 			continue
 		}
 
-		fmt.Printf("  Adding bucket %s from %s...\n", ui.Cyan(name), source)
+		ctx.GetLogger().Header(fmt.Sprintf("Adding bucket %s", name))
+		ctx.GetLogger().Detail(source)
 		if err := ctx.Services.Buckets.Add(name, source, scoop.ScopeUser, nil); err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "  %s Failed to add bucket '%s': %v\n", ui.Error("-"), name, err)
+			ctx.GetLogger().Error(fmt.Sprintf("failed to add bucket %s: %v", name, err))
 		} else {
-			fmt.Printf("  %s Bucket '%s' added\n", ui.Success("+"), name)
+			ctx.GetLogger().Done(name, "bucket added")
 		}
 	}
 
@@ -130,7 +130,7 @@ func importApps(ctx *app.Context, data map[string]any, forceGlobal bool) error {
 		return fmt.Errorf("invalid apps format in import file")
 	}
 
-	fmt.Printf("Importing %d app(s)...\n", len(appList))
+	ctx.GetLogger().Header(fmt.Sprintf("Importing %d app(s)", len(appList)))
 
 	for _, a := range appList {
 		am, ok := a.(map[string]any)
@@ -164,12 +164,12 @@ func importApps(ctx *app.Context, data map[string]any, forceGlobal bool) error {
 		if installed != nil {
 			if held && !installed.Held {
 				if err := ctx.Services.Apps.SetHold(plainName, scope, true); err != nil {
-					_, _ = fmt.Fprintf(os.Stderr, "  %s Failed to hold '%s': %v\n", ui.Warning("!"), plainName, err)
+					ctx.GetLogger().Warn(fmt.Sprintf("failed to hold %s: %v", plainName, err))
 				} else {
-					fmt.Printf("  %s '%s' held\n", ui.Success("+"), plainName)
+					ctx.GetLogger().Done(plainName, "held")
 				}
 			}
-			fmt.Printf("  %s '%s' is already installed\n", ui.Info("i"), plainName)
+			ctx.GetLogger().Skip(plainName, "already installed")
 			continue
 		}
 
@@ -178,28 +178,28 @@ func importApps(ctx *app.Context, data map[string]any, forceGlobal bool) error {
 			installName = source + "/" + name
 		}
 
-		fmt.Printf("  Installing %s...\n", ui.Cyan(installName))
+		ctx.GetLogger().Header(fmt.Sprintf("Installing %s", installName))
 
 		if global {
-			fmt.Printf("  (global scope)\n")
+			ctx.GetLogger().Detail("global scope")
 		}
 
 		result := ctx.Services.Installer.InstallSingle(installName, service.InstallOptions{
 			Scope: scope,
 		})
 		if !result.Success && !result.Skipped {
-			_, _ = fmt.Fprintf(os.Stderr, "  %s Failed to install '%s': %v\n", ui.Error("-"), installName, result.Error)
+			ctx.GetLogger().Error(fmt.Sprintf("failed to install %s: %v", installName, result.Error))
 		} else if result.Skipped {
-			fmt.Printf("  %s '%s' is already installed\n", ui.Info("i"), installName)
+			ctx.GetLogger().Skip(installName, "already installed")
 		} else {
 			if held {
 				if err := ctx.Services.Apps.SetHold(plainName, scope, true); err != nil {
-					_, _ = fmt.Fprintf(os.Stderr, "  %s Failed to hold '%s': %v\n", ui.Warning("!"), plainName, err)
+					ctx.GetLogger().Warn(fmt.Sprintf("failed to hold %s: %v", plainName, err))
 				} else {
-					fmt.Printf("  %s '%s' held\n", ui.Success("+"), plainName)
+					ctx.GetLogger().Done(plainName, "held")
 				}
 			}
-			fmt.Printf("  %s '%s' installed\n", ui.Success("+"), name)
+			ctx.GetLogger().Done(name, "installed")
 		}
 	}
 
@@ -221,7 +221,7 @@ func importConfig(ctx *app.Context, data map[string]any) error {
 		return nil
 	}
 
-	fmt.Printf("Importing %d config key(s)...\n", len(configMap))
+	ctx.GetLogger().Header(fmt.Sprintf("Importing %d config key(s)", len(configMap)))
 
 	currentConfig, err := ctx.Services.Config.Load()
 	if err != nil {
@@ -230,7 +230,7 @@ func importConfig(ctx *app.Context, data map[string]any) error {
 
 	for k, v := range configMap {
 		currentConfig[k] = v
-		fmt.Printf("  %s Config '%s' set\n", ui.Success("+"), k)
+		ctx.GetLogger().Done(k, "config set")
 	}
 
 	if err := ctx.Services.Config.Save(currentConfig); err != nil {

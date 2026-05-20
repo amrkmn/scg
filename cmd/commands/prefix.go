@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 	"go.noz.one/scg/internal/cmdctx"
@@ -26,7 +25,7 @@ func NewPrefixCommand() *cobra.Command {
 			}
 			path, err := ctx.Services.Apps.GetAppPrefix(args[0], scope)
 			if err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "App '%s' not found in %s scope\n", args[0], scope)
+				ctx.GetLogger().Error(fmt.Sprintf("app %q not found in %s scope", args[0], scope))
 				return err
 			}
 			fmt.Println(path)

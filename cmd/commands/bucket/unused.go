@@ -20,6 +20,7 @@ func NewUnusedCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmdctx.FromCmd(cmd)
+			logger := ctx.GetLogger()
 
 			var scope scoop.InstallScope
 			if global {
@@ -30,13 +31,13 @@ func NewUnusedCommand() *cobra.Command {
 
 			buckets, err := ctx.Services.Buckets.List(scope)
 			if err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "%s Failed to list buckets: %v\n", ui.Error("error:"), err)
+				logger.Error(fmt.Sprintf("failed to list buckets: %v", err))
 				os.Exit(1)
 			}
 
 			installedApps, err := ctx.Services.Apps.ListInstalled("")
 			if err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "%s Failed to list installed apps: %v\n", ui.Error("error:"), err)
+				logger.Error(fmt.Sprintf("failed to list installed apps: %v", err))
 				os.Exit(1)
 			}
 
@@ -56,9 +57,11 @@ func NewUnusedCommand() *cobra.Command {
 			}
 
 			if len(unused) == 0 {
-				fmt.Println("No unused buckets found.")
+				logger.Skip("buckets", "none unused")
 				return nil
 			}
+
+			logger.Header("Unused buckets")
 
 			for _, b := range unused {
 				fmt.Printf("%s  %s\n", ui.Bold(b.Name), ui.Dim(b.Source))

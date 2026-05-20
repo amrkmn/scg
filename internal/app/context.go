@@ -24,6 +24,7 @@ type Services struct {
 	Installer   *service.InstallService
 	Uninstaller *service.UninstallService
 	Updater     *service.UpdateService
+	Resetter    *service.ResetService
 }
 
 // NewContext constructs a fully wired Context with all services initialised.
@@ -46,6 +47,7 @@ func NewContext(version string, verbose bool) *Context {
 		Installer:   service.NewInstallService(ctx),
 		Uninstaller: service.NewUninstallService(ctx),
 		Updater:     service.NewUpdateService(ctx),
+		Resetter:    service.NewResetService(ctx),
 	}
 	return ctx
 }
