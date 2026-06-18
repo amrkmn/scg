@@ -4,27 +4,27 @@ on:
   push:
     branches: [main, master]
     paths-ignore:
-      - '**.md'
-      - '.gitignore'
-      - 'LICENSE'
+      - "**.md"
+      - ".gitignore"
+      - "LICENSE"
   pull_request:
     branches: [main, master]
     paths-ignore:
-      - '**.md'
-      - '.gitignore'
-      - 'LICENSE'
+      - "**.md"
+      - ".gitignore"
+      - "LICENSE"
 
 jobs:
   test:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: 'stable'
+          go-version: "stable"
           cache: true
 
       - name: Set up Zig
@@ -33,7 +33,7 @@ jobs:
           version: "0.16.0"
 
       - name: Cache Zig build
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .zig-cache
           key: zig-shim-${{ hashFiles('shim/src/main.zig', 'shim/build.zig') }}
@@ -53,12 +53,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: 'stable'
+          go-version: "stable"
           cache: true
 
       - name: Set up Zig
@@ -67,7 +67,7 @@ jobs:
           version: "0.16.0"
 
       - name: Cache Zig build
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .zig-cache
           key: zig-shim-${{ hashFiles('shim/src/main.zig', 'shim/build.zig') }}
@@ -78,7 +78,7 @@ jobs:
         run: make build-shim
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
+        uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # v9.2.1
         with:
           version: latest
           args: --timeout=5m
@@ -91,7 +91,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Set up Zig
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
@@ -99,7 +99,7 @@ jobs:
           version: "0.16.0"
 
       - name: Cache Zig build
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .zig-cache
           key: zig-shim-${{ hashFiles('shim/src/main.zig', 'shim/build.zig') }}
@@ -110,12 +110,12 @@ jobs:
         run: make build-shim
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
+        uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           languages: go
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
+        uses: github/codeql-action/autobuild@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
+        uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
