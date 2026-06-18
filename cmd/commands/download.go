@@ -11,6 +11,7 @@ import (
 	"go.noz.one/scg/internal/cmdctx"
 	"go.noz.one/scg/internal/install"
 	"go.noz.one/scg/internal/scoop"
+	"go.noz.one/scg/internal/ui"
 )
 
 // NewDownloadCommand creates the download subcommand.
@@ -45,13 +46,19 @@ scg download nodejs --arch 64bit`,
 			}
 			dm := install.NewDownloadManager(scope, ctx.GetVerbose())
 
-			var failed int
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Heading(formatDownloadHeading(args, scope)))
+
+			var succeeded, failed int
 			for _, input := range args {
 				if err := downloadOne(ctx, dm, input, arch, !flagForce, flagSkipHash, flagProxy); err != nil {
 					failed++
 					ctx.GetLogger().Error(fmt.Sprintf("%s: %v", input, err))
+				} else {
+					succeeded++
 				}
 			}
+
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderStatusSummary(ui.StatusDone, "download", fmt.Sprintf("%d downloaded, %d failed", succeeded, failed)))
 
 			if failed > 0 {
 				return fmt.Errorf("%d app(s) failed to download", failed)
@@ -124,8 +131,6 @@ func downloadOne(ctx *app.Context, dm *install.DownloadManager, input, arch stri
 		ctx.GetLogger().Done("hash", "sha256")
 	}
 
-	ctx.GetLogger().Header("Summary")
-	ctx.GetLogger().Done(appName, fmt.Sprintf("downloaded %s", manifest.Version))
 	return nil
 }
 
@@ -213,4 +218,15 @@ func hashAt(hashes []string, i int) string {
 		return hashes[0]
 	}
 	return ""
+}
+
+func formatDownloadHeading(apps []string, scope scoop.InstallScope) string {
+	scopeTag := ""
+	if scope == scoop.ScopeGlobal {
+		scopeTag = " [global]"
+	}
+	if len(apps) == 1 {
+		return fmt.Sprintf("Downloading %s%s", apps[0], scopeTag)
+	}
+	return fmt.Sprintf("Downloading %d apps%s", len(apps), scopeTag)
 }

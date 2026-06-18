@@ -28,19 +28,18 @@ func NewRemoveCommand() *cobra.Command {
 				scope = scoop.ScopeGlobal
 			}
 
-			spinner := ui.NewSpinner(fmt.Sprintf("Removing bucket %s", name))
-			spinner.Start()
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Heading(formatBucketHeading("Removing", name, scope)))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.StatusWithOptions(ui.StatusRunning, "remove", ui.BoldCyan(name), ui.StatusOptions{}))
 
 			err := ctx.Services.Buckets.Remove(name, scope)
-
-			spinner.Stop()
 
 			if err != nil {
 				logger.Error(fmt.Sprintf("failed to remove bucket %q: %v", name, err))
 				os.Exit(1)
 			}
 
-			logger.Done("bucket", fmt.Sprintf("removed %s", name))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Done("bucket", ui.BoldCyan(name)))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderStatusSummary(ui.StatusDone, "bucket", "1 removed, 0 skipped"))
 			return nil
 		},
 	}

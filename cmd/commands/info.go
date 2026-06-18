@@ -3,6 +3,8 @@ package commands
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -14,11 +16,13 @@ import (
 
 // NewInfoCommand creates the info subcommand.
 func NewInfoCommand() *cobra.Command {
-	return &cobra.Command{
+	var flagVerbose bool
+
+	cmd := &cobra.Command{
 		Use:     "info <app>",
 		Short:   "Show information about an app",
 		Args:    cobra.ExactArgs(1),
-		Example: "scg info git\nscg info extras/git",
+		Example: "scg info git\nscg info extras/git\nscg info git --verbose",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmdctx.MustFromCmd(cmd)
 
@@ -52,7 +56,6 @@ func NewInfoCommand() *cobra.Command {
 						ctx.GetLogger().Detail(fmt.Sprintf("%s/%s", fm.Bucket, fm.App))
 					}
 				}
-				_, _ = fmt.Fprintln(os.Stdout)
 			}
 
 			fields := ctx.Services.Manifests.ReadManifestPair(args[0], installed, bucket)
@@ -71,113 +74,114 @@ func NewInfoCommand() *cobra.Command {
 				return os.ErrNotExist
 			}
 
-			printAppInfo(fields, m, installed, bucket)
+			printAppInfo(cmd.OutOrStdout(), fields, m, installed, bucket, flagVerbose)
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVarP(&flagVerbose, "verbose", "v", false, "Show full paths and URLs")
+	return cmd
 }
 
-const infoLabelWidth = 20
-
-func infoLine(label, value string) {
-	if value == "" {
-		return
-	}
-	pad := infoLabelWidth - len(label)
-	if pad < 0 {
-		pad = 0
-	}
-	_, _ = fmt.Fprintf(os.Stdout, "%s%s : %s\n", ui.Bold(label), strings.Repeat(" ", pad), value)
+func printAppInfo(w interface{ Write([]byte) (int, error) }, fields service.InfoFields, m *scoop.Manifest, installed, bucket *service.FoundManifest, verbose bool) {
+	_, _ = fmt.Fprintln(w, ui.RenderKeyValueBlock("", buildInfoPairs(fields, m, installed, bucket, verbose)))
 }
 
-func printAppInfo(fields service.InfoFields, m *scoop.Manifest, installed, bucket *service.FoundManifest) {
-	infoLine("Name", fields.Name)
-	infoLine("Description", fields.Description)
+func buildInfoPairs(fields service.InfoFields, m *scoop.Manifest, installed, bucket *service.FoundManifest, verbose bool) []ui.KeyValue {
+	pairs := make([]ui.KeyValue, 0, 16)
+	appendPair := func(key, value string) {
+		if value == "" {
+			return
+		}
+		pairs = append(pairs, ui.KeyValue{Key: key, Value: value})
+	}
 
-	// Version display.
+	appendPair("Name", fields.Name)
+	appendPair("Description", fields.Description)
+
 	if fields.InstalledVersion != "" && fields.LatestVersion != "" {
 		if fields.UpdateAvailable {
-			infoLine("Version", fmt.Sprintf("%s -> %s %s",
+			appendPair("Version", fmt.Sprintf("%s -> %s %s",
 				fields.InstalledVersion,
 				fields.LatestVersion,
 				ui.Yellow("(update available)"),
 			))
 		} else {
-			infoLine("Version", fmt.Sprintf("%s %s",
+			appendPair("Version", fmt.Sprintf("%s %s",
 				fields.InstalledVersion,
 				ui.Dim("(up to date)"),
 			))
 		}
 	} else if fields.InstalledVersion != "" {
-		infoLine("Version", fields.InstalledVersion)
+		appendPair("Version", fields.InstalledVersion)
 	} else if fields.LatestVersion != "" {
-		infoLine("Version", fields.LatestVersion)
+		appendPair("Version", fields.LatestVersion)
 	} else {
-		infoLine("Version", fields.Version)
+		appendPair("Version", fields.Version)
 	}
 
-	infoLine("Homepage", fields.Homepage)
-	infoLine("License", fields.License)
+	appendPair("Homepage", fields.Homepage)
+	appendPair("License", fields.License)
 
-	// Installed status.
 	if installed != nil {
-		infoLine("Installed", fmt.Sprintf("Yes %s", ui.Dim("("+string(installed.Scope)+")")))
+		appendPair("Installed", fmt.Sprintf("Yes %s", ui.Dim("("+string(installed.Scope)+")")))
 		if installed.Bucket != "" {
-			infoLine("Bucket", installed.Bucket)
+			appendPair("Bucket", installed.Bucket)
 		}
 	} else {
-		infoLine("Installed", "No")
+		appendPair("Installed", "No")
 		if bucket != nil {
-			infoLine("Bucket", bucket.Bucket+" "+ui.Dim("("+string(bucket.Scope)+")"))
+			appendPair("Bucket", bucket.Bucket+" "+ui.Dim("("+string(bucket.Scope)+")"))
 		}
 	}
 
-	// Architecture.
 	if len(m.Architecture) > 0 {
 		keys := make([]string, 0, len(m.Architecture))
 		for k := range m.Architecture {
 			keys = append(keys, k)
 		}
-		infoLine("Architecture", strings.Join(keys, ", "))
+		sort.Strings(keys)
+		appendPair("Architecture", strings.Join(keys, ", "))
 	}
 
-	// Dependencies.
 	deps := toInfoStringSlice(m.Depends)
 	if len(deps) > 0 {
-		infoLine("Dependencies", strings.Join(deps, ", "))
+		appendPair("Dependencies", strings.Join(deps, ", "))
 	}
 
-	// Suggestions.
 	if len(m.Suggest) > 0 {
 		suggests := make([]string, 0, len(m.Suggest))
 		for k := range m.Suggest {
 			suggests = append(suggests, k)
 		}
-		infoLine("Suggestions", strings.Join(suggests, ", "))
+		sort.Strings(suggests)
+		appendPair("Suggestions", strings.Join(suggests, ", "))
 	}
 
-	// Binaries.
 	bins := service.ExtractBinaries(m.Bin)
 	if len(bins) > 0 {
-		infoLine("Binaries", strings.Join(bins, ", "))
+		appendPair("Binaries", strings.Join(bins, ", "))
 	}
 
-	// Adds to PATH.
 	pathAdditions := toInfoStringSlice(m.EnvAddPath)
 	if len(pathAdditions) > 0 {
-		infoLine("Adds to PATH", strings.Join(pathAdditions, ", "))
+		appendPair("Adds to PATH", strings.Join(pathAdditions, ", "))
 	}
 
-	// Environment variables.
 	if len(m.EnvSet) > 0 {
+		keys := make([]string, 0, len(m.EnvSet))
+		for k := range m.EnvSet {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
 		parts := make([]string, 0, len(m.EnvSet))
-		for k, v := range m.EnvSet {
+		for _, k := range keys {
+			v := m.EnvSet[k]
 			parts = append(parts, k+"="+v)
 		}
-		infoLine("Environment", strings.Join(parts, ", "))
+		appendPair("Environment", strings.Join(parts, ", "))
 	}
 
-	// Shortcuts (display the alias/name column, index 1).
 	if len(m.Shortcuts) > 0 {
 		names := make([]string, 0, len(m.Shortcuts))
 		for _, s := range m.Shortcuts {
@@ -188,43 +192,65 @@ func printAppInfo(fields service.InfoFields, m *scoop.Manifest, installed, bucke
 			}
 		}
 		if len(names) > 0 {
-			infoLine("Creates shortcuts", strings.Join(names, ", "))
+			appendPair("Creates shortcuts", strings.Join(names, ", "))
 		}
 	}
 
-	// Persist.
 	persisted := toInfoStringSlice(m.Persist)
 	if len(persisted) > 0 {
-		infoLine("Persisted data", strings.Join(persisted, ", "))
+		appendPair("Persisted data", strings.Join(persisted, ", "))
 	}
 
-	// Notes.
 	notes := toInfoStringSlice(m.Notes)
 	if len(notes) > 0 {
-		infoLine("Notes", strings.Join(notes, " | "))
+		appendPair("Notes", strings.Join(notes, " | "))
 	}
 
-	// Deprecated.
+	if verbose {
+		if installed != nil {
+			paths := scoop.ResolvePaths(installed.Scope)
+			installDir, _ := scoop.ResolveCurrentDir(installed.App, installed.Scope)
+			if installDir != "" {
+				appendPair("Install dir", installDir)
+			}
+			persistDir := filepath.Join(paths.Root, "persist", installed.App)
+			if _, err := os.Stat(persistDir); err == nil {
+				appendPair("Persist dir", persistDir)
+			}
+		} else if bucket != nil {
+			paths := scoop.ResolvePaths(bucket.Scope)
+			cacheDir := paths.Cache
+			if cacheDir != "" {
+				appendPair("Cache dir", cacheDir)
+			}
+		}
+		if installed != nil && installed.FilePath != "" {
+			appendPair("Manifest", installed.FilePath)
+		} else if bucket != nil && bucket.FilePath != "" {
+			appendPair("Manifest", bucket.FilePath)
+		}
+	}
+
 	if fields.Deprecated {
 		msg := "Yes"
 		if fields.ReplacedBy != "" {
 			msg = fmt.Sprintf("Yes (replaced by %s)", ui.Cyan(fields.ReplacedBy))
 		}
-		infoLine("DEPRECATED", ui.Yellow(msg))
+		appendPair("DEPRECATED", ui.Yellow(msg))
 	}
 
-	// Comments (##).
 	if m.Comments != nil {
 		comments := toInfoStringSlice(m.Comments)
 		if len(comments) > 0 {
-			infoLine("Comments", strings.Join(comments, " | "))
+			appendPair("Comments", strings.Join(comments, " | "))
 		}
 	}
 
-	// Install date.
 	if !fields.InstallDate.IsZero() {
-		infoLine("Install date", fields.InstallDate.Format("2006-01-02 15:04:05"))
+		appendPair("Install date", fields.InstallDate.Format("2006-01-02 15:04:05"))
 	}
+
+	return pairs
 }
 
 // toInfoStringSlice converts any (string or []any) to []string for display.

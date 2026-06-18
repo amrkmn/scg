@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -55,7 +54,7 @@ func NewStatusCommand() *cobra.Command {
 			} else {
 				ctx.GetLogger().Done("buckets", "up-to-date")
 			}
-			_, _ = fmt.Fprintln(os.Stdout)
+			_, _ = fmt.Fprintln(cmd.OutOrStdout())
 
 			appResults := ctx.Services.Status.CheckStatus(checkApps, buckets, nil)
 
@@ -80,17 +79,10 @@ func NewStatusCommand() *cobra.Command {
 				return display[i].Name < display[j].Name
 			})
 
-			header := []string{
-				ui.BoldGreen("Name"),
-				ui.BoldGreen("Installed"),
-				ui.BoldGreen("Latest"),
-				ui.BoldGreen("Missing Deps"),
-				ui.BoldGreen("Info"),
-			}
-			rows := [][]string{header}
+			rows := make([][]string, 0, len(display))
 
 			for _, r := range display {
-				name := ui.Cyan(r.Name)
+				name := ui.BoldCyan(r.Name)
 
 				latest := r.Latest
 				if r.Outdated {
@@ -114,8 +106,7 @@ func NewStatusCommand() *cobra.Command {
 				rows = append(rows, []string{name, r.Installed, latest, missingDeps, info})
 			}
 
-			_, _ = fmt.Fprintln(os.Stdout, ui.FormatLineColumns(rows, []float64{2.0, 1.0, 1.0, 1.0, 1.5}))
-
+			footer := fmt.Sprintf("%d app(s) need attention", len(display))
 			if flagVerbose {
 				var outdated, failed int
 				for _, r := range display {
@@ -126,11 +117,14 @@ func NewStatusCommand() *cobra.Command {
 						failed++
 					}
 				}
-				_, _ = fmt.Fprintf(os.Stdout, "\n%s %d total, %s%d outdated%s, %s%d failed%s\n",
-					ui.Dim("("), len(display), ui.Yellow(""), outdated, ui.Dim(""), ui.Red(""), failed, ui.Dim(")"))
-			} else {
-				_, _ = fmt.Fprintf(os.Stdout, "\n%s\n", ui.Dim(fmt.Sprintf("%d app(s) need attention", len(display))))
+				footer = fmt.Sprintf("%d total, %d outdated, %d failed", len(display), outdated, failed)
 			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderTable(
+				[]string{"Name", "Installed", "Latest", "Missing Deps", "Info"},
+				rows,
+				[]float64{2.0, 1.0, 1.0, 1.0, 1.5},
+				footer,
+			))
 			return nil
 		},
 	}

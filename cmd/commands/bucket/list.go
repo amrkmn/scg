@@ -2,7 +2,6 @@ package bucket
 
 import (
 	"fmt"
-	"os"
 	"sort"
 
 	"github.com/spf13/cobra"
@@ -33,13 +32,7 @@ func NewListCommand() *cobra.Command {
 				return buckets[i].Name < buckets[j].Name
 			})
 
-			header := []string{
-				ui.BoldGreen("Name"),
-				ui.BoldGreen("Source"),
-				ui.BoldGreen("Updated"),
-				ui.BoldGreen("Manifests"),
-			}
-			rows := [][]string{header}
+			rows := make([][]string, 0, len(buckets))
 
 			for _, b := range buckets {
 				updated := ""
@@ -51,15 +44,19 @@ func NewListCommand() *cobra.Command {
 					manifests = fmt.Sprintf("%d", b.Manifests)
 				}
 				rows = append(rows, []string{
-					ui.Cyan(b.Name),
+					ui.BoldCyan(b.Name),
 					b.Source,
 					updated,
 					manifests,
 				})
 			}
 
-			_, _ = fmt.Fprintln(os.Stdout, ui.FormatLineColumns(rows, []float64{1.0, 3.0, 1.5, 0.5}))
-			_, _ = fmt.Fprintf(os.Stdout, "\n%s\n", ui.Dim(fmt.Sprintf("%d bucket(s) installed", len(buckets))))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderTable(
+				[]string{"Name", "Source", "Updated", "Manifests"},
+				rows,
+				[]float64{1.0, 3.0, 1.5, 0.5},
+				fmt.Sprintf("%d bucket(s) installed", len(buckets)),
+			))
 			return nil
 		},
 	}

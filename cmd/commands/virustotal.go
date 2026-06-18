@@ -14,6 +14,7 @@ import (
 	"go.noz.one/scg/internal/app"
 	"go.noz.one/scg/internal/cmdctx"
 	"go.noz.one/scg/internal/service"
+	"go.noz.one/scg/internal/ui"
 )
 
 // NewVirusTotalCommand creates the virustotal subcommand.
@@ -55,9 +56,10 @@ func NewVirusTotalCommand() *cobra.Command {
 			}
 
 			client := &http.Client{}
+			stdout := cmd.OutOrStdout()
 			var unsafe, failed int
 			for _, input := range args {
-				bad, err := checkVirusTotalApp(ctx, client, apiKey, input, flagArch, flagScan)
+				bad, err := checkVirusTotalApp(ctx, stdout, client, apiKey, input, flagArch, flagScan)
 				if err != nil {
 					failed++
 					ctx.GetLogger().Warn(fmt.Sprintf("%s: %v", input, err))
@@ -95,7 +97,7 @@ func virustotalAPIKey(cfg *service.ConfigService) (string, bool) {
 	return "", false
 }
 
-func checkVirusTotalApp(ctx *app.Context, client *http.Client, apiKey, input, arch string, scan bool) (bool, error) {
+func checkVirusTotalApp(ctx *app.Context, out io.Writer, client *http.Client, apiKey, input, arch string, scan bool) (bool, error) {
 	_, bucket := ctx.Services.Manifests.FindManifestPair(input)
 	if bucket == nil {
 		return false, fmt.Errorf("manifest not found")
@@ -113,7 +115,7 @@ func checkVirusTotalApp(ctx *app.Context, client *http.Client, apiKey, input, ar
 		if hash != "" {
 			algo, rawHash := splitVTSupportedHash(hash)
 			if rawHash != "" {
-				bad, found, err := virustotalFileReport(client, apiKey, rawHash, appName)
+				bad, found, err := virustotalFileReport(out, client, apiKey, rawHash, appName)
 				if err != nil {
 					return unsafe, err
 				}
@@ -125,7 +127,7 @@ func checkVirusTotalApp(ctx *app.Context, client *http.Client, apiKey, input, ar
 			}
 		}
 
-		found, err := virustotalURLReport(client, apiKey, dlURL, appName)
+		found, err := virustotalURLReport(out, client, apiKey, dlURL, appName)
 		if err != nil {
 			return unsafe, err
 		}
@@ -163,7 +165,7 @@ func splitVTSupportedHash(hash string) (algo, raw string) {
 	return algo, raw
 }
 
-func virustotalFileReport(client *http.Client, apiKey, hash, appName string) (bad bool, found bool, err error) {
+func virustotalFileReport(out io.Writer, client *http.Client, apiKey, hash, appName string) (bad bool, found bool, err error) {
 	body, status, err := virustotalRequest(client, "GET", "https://www.virustotal.com/api/v3/files/"+hash, apiKey, "")
 	if err != nil {
 		return false, false, err
@@ -177,15 +179,11 @@ func virustotalFileReport(client *http.Client, apiKey, hash, appName string) (ba
 	stats := parseVTStats(body)
 	unsafe := stats.Malicious + stats.Suspicious
 	total := unsafe + stats.Undetected + stats.Harmless
-	if unsafe == 0 {
-		fmt.Printf("%s: %d/%d, see https://www.virustotal.com/gui/file/%s\n", appName, unsafe, total, hash)
-	} else {
-		fmt.Printf("%s: %d/%d unsafe, see https://www.virustotal.com/gui/file/%s\n", appName, unsafe, total, hash)
-	}
+	_, _ = fmt.Fprintln(out, formatVirusTotalFileReportLine(appName, hash, unsafe, total))
 	return unsafe > 0, true, nil
 }
 
-func virustotalURLReport(client *http.Client, apiKey, rawURL, appName string) (bool, error) {
+func virustotalURLReport(out io.Writer, client *http.Client, apiKey, rawURL, appName string) (bool, error) {
 	id := base64.RawURLEncoding.EncodeToString([]byte(rawURL))
 	_, status, err := virustotalRequest(client, "GET", "https://www.virustotal.com/api/v3/urls/"+id, apiKey, "")
 	if err != nil {
@@ -197,8 +195,22 @@ func virustotalURLReport(client *http.Client, apiKey, rawURL, appName string) (b
 	if status < 200 || status >= 300 {
 		return false, fmt.Errorf("VirusTotal URL lookup failed for %s: HTTP %d", appName, status)
 	}
-	fmt.Printf("%s: URL report found, see https://www.virustotal.com/gui/url/%s\n", appName, id)
+	_, _ = fmt.Fprintln(out, formatVirusTotalURLReportLine(appName, id))
 	return true, nil
+}
+
+func formatVirusTotalFileReportLine(appName, hash string, unsafe, total int) string {
+	detail := fmt.Sprintf("%d/%d, see https://www.virustotal.com/gui/file/%s", unsafe, total, hash)
+	status := ui.StatusDone
+	if unsafe > 0 {
+		detail = fmt.Sprintf("%d/%d unsafe, see https://www.virustotal.com/gui/file/%s", unsafe, total, hash)
+		status = ui.StatusWarn
+	}
+	return ui.StatusWithOptions(status, appName, detail, ui.StatusOptions{})
+}
+
+func formatVirusTotalURLReportLine(appName, id string) string {
+	return ui.StatusWithOptions(ui.StatusNote, appName, fmt.Sprintf("URL report found, see https://www.virustotal.com/gui/url/%s", id), ui.StatusOptions{})
 }
 
 func virustotalSubmitURL(client *http.Client, apiKey, rawURL string) error {

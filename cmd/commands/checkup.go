@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,7 +28,7 @@ func NewCheckupCommand() *cobra.Command {
 		Long:    "Performs a series of diagnostic tests to identify things that may cause problems with Scoop.",
 		Example: "  scg checkup",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmdctx.MustFromCmd(cmd)
+			_ = cmdctx.MustFromCmd(cmd)
 
 			var results []checkResult
 
@@ -50,29 +51,33 @@ func NewCheckupCommand() *cobra.Command {
 				}
 			}
 
-			ctx.GetLogger().Header("Checking Scoop environment")
-			for _, r := range results {
-				if r.ok {
-					fmt.Println(ui.Done(r.label, ""))
-				} else {
-					fmt.Println(ui.FailLine(r.label))
-					if r.detail != "" {
-						fmt.Println(ui.Detail(ui.Dim("  " + r.detail)))
-					}
-				}
-			}
-
-			fmt.Println()
-			ctx.GetLogger().Header("Summary")
-			if issues == 0 {
-				ctx.GetLogger().Done("checkup", "no problems identified")
-			} else {
-				ctx.GetLogger().Warn(fmt.Sprintf("found %d potential %s", issues, pluralize(issues, "problem")))
-			}
+			renderCheckupOutput(cmd.OutOrStdout(), results, issues)
 
 			return nil
 		},
 	}
+}
+
+func renderCheckupOutput(w io.Writer, results []checkResult, issues int) {
+	_, _ = fmt.Fprintln(w, ui.Heading("Checking Scoop environment"))
+	for _, r := range results {
+		kind := ui.StatusDone
+		line := ui.StatusWithOptions(kind, r.label, "", ui.StatusOptions{})
+		if !r.ok {
+			line = ui.StatusWithOptions(ui.StatusFail, r.label, "", ui.StatusOptions{})
+		}
+		_, _ = fmt.Fprintln(w, line)
+		if !r.ok && r.detail != "" {
+			_, _ = fmt.Fprintln(w, ui.Detail(ui.Dim("  "+r.detail)))
+		}
+	}
+	_, _ = fmt.Fprintln(w)
+
+	summaryLine := ui.Done("checkup", "no problems identified")
+	if issues > 0 {
+		summaryLine = ui.WarnLine(fmt.Sprintf("found %d potential %s", issues, pluralize(issues, "problem")))
+	}
+	_, _ = fmt.Fprintln(w, ui.RenderSummary(summaryLine))
 }
 
 func checkScoopDirs() []checkResult {

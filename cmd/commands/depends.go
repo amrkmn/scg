@@ -8,6 +8,7 @@ import (
 	"go.noz.one/scg/internal/app"
 	"go.noz.one/scg/internal/cmdctx"
 	"go.noz.one/scg/internal/scoop"
+	"go.noz.one/scg/internal/ui"
 )
 
 func NewDependsCommand() *cobra.Command {
@@ -36,14 +37,16 @@ func NewDependsCommand() *cobra.Command {
 				return nil
 			}
 
-			ctx.GetLogger().Header("Dependencies for " + appName)
+			rows := make([][]string, 0, len(deps))
 			for _, dep := range deps {
+				value := dep.Name
 				if dep.Source != "" && dep.Source != "missing" {
-					ctx.GetLogger().Detail(dep.Source + "/" + dep.Name)
-				} else {
-					ctx.GetLogger().Detail(dep.Name)
+					value = dep.Source + "/" + dep.Name
 				}
+				rows = append(rows, []string{ui.BoldCyan(value)})
 			}
+
+			fmt.Fprintln(cmd.OutOrStdout(), ui.RenderTable([]string{"Dependency"}, rows, []float64{1.0}, fmt.Sprintf("%d dependenc%s", len(deps), pluralizeDepends(len(deps)))))
 			return nil
 		},
 	}
@@ -147,4 +150,11 @@ func detectArch(archFlag string) string {
 		}
 	}
 	return "64bit"
+}
+
+func pluralizeDepends(n int) string {
+	if n == 1 {
+		return "y"
+	}
+	return "ies"
 }

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -65,14 +66,14 @@ of an app.`,
 				if flagGlobal {
 					scope = scoop.ScopeGlobal
 				}
-				return removeCache(ctx, apps, flagAll, scope, flagDryRun)
+				return removeCache(ctx, cmd.OutOrStdout(), cmd.ErrOrStderr(), apps, flagAll, scope, flagDryRun)
 
 			case "*":
 				scope := scoop.ScopeUser
 				if flagGlobal {
 					scope = scoop.ScopeGlobal
 				}
-				return removeCache(ctx, []string{"*"}, flagAll, scope, flagDryRun)
+				return removeCache(ctx, cmd.OutOrStdout(), cmd.ErrOrStderr(), []string{"*"}, flagAll, scope, flagDryRun)
 
 			default:
 				// Treat first arg as app name and show it
@@ -94,7 +95,7 @@ func showAllCache(ctx *app.Context) error {
 		return err
 	}
 
-	displayCacheList(result, ctx.GetVerbose())
+	displayCacheList(os.Stdout, os.Stderr, result, ctx.GetVerbose())
 	return nil
 }
 
@@ -104,11 +105,11 @@ func showCache(ctx *app.Context, apps []string) error {
 		return err
 	}
 
-	displayCacheList(result, ctx.GetVerbose())
+	displayCacheList(os.Stdout, os.Stderr, result, ctx.GetVerbose())
 	return nil
 }
 
-func removeCache(ctx *app.Context, apps []string, removeAll bool, scope scoop.InstallScope, dryRun bool) error {
+func removeCache(ctx *app.Context, stdout, stderr io.Writer, apps []string, removeAll bool, scope scoop.InstallScope, dryRun bool) error {
 	if removeAll {
 		apps = []string{"*"}
 	} else {
@@ -125,17 +126,17 @@ func removeCache(ctx *app.Context, apps []string, removeAll bool, scope scoop.In
 		return err
 	}
 
-	displayCacheRemove(result, dryRun)
+	displayCacheRemove(stdout, stderr, result, scope, dryRun)
 	return nil
 }
 
-func displayCacheList(result service.CacheResult, verbose bool) {
+func displayCacheList(stdout, stderr io.Writer, result service.CacheResult, verbose bool) {
 	if len(result.Entries) == 0 {
-		_, _ = fmt.Fprintln(os.Stdout, ui.Skip("cache", "empty"))
+		_, _ = fmt.Fprintln(stdout, ui.Skip("cache", "empty"))
 		return
 	}
 
-	_, _ = fmt.Fprintln(os.Stdout, ui.Heading("Cache"))
+	_, _ = fmt.Fprintln(stdout, ui.Heading("Cache"))
 
 	// Calculate column widths based on content
 	maxApp := ui.VisualLength("Name")
@@ -158,7 +159,7 @@ func displayCacheList(result service.CacheResult, verbose bool) {
 	}
 
 	// Print header
-	_, _ = fmt.Fprintf(os.Stdout, "%s  %s  %s\n",
+	_, _ = fmt.Fprintf(stdout, "%s  %s  %s\n",
 		ui.PadRight(ui.BoldGreen("Name"), maxApp),
 		ui.PadRight(ui.BoldGreen("Version"), maxVer),
 		ui.BoldGreen("Size"))
@@ -169,63 +170,68 @@ func displayCacheList(result service.CacheResult, verbose bool) {
 		if verbose && e.Scope == "global" {
 			size += " " + ui.Dim("[global]")
 		}
-		_, _ = fmt.Fprintf(os.Stdout, "%s  %s  %s\n",
+		_, _ = fmt.Fprintf(stdout, "%s  %s  %s\n",
 			ui.PadRight(ui.Cyan(e.App), maxApp),
 			ui.PadRight(e.Version, maxVer),
 			size)
 	}
 
 	// Footer
-	_, _ = fmt.Fprintf(os.Stdout, "\n%s\n", ui.Dim(fmt.Sprintf("%d file(s), %s",
+	_, _ = fmt.Fprintf(stdout, "\n%s\n", ui.Dim(fmt.Sprintf("%d file(s), %s",
 		len(result.Entries), ui.FormatSize(result.TotalSize))))
 
 	// Print errors if any
 	if len(result.Errors) > 0 {
 		for _, err := range result.Errors {
-			_, _ = fmt.Fprintln(os.Stderr, ui.WarnLine(err))
+			_, _ = fmt.Fprintln(stderr, ui.WarnLine(err))
 		}
 	}
 }
 
-func displayCacheRemove(result service.CacheResult, dryRun bool) {
+func displayCacheRemove(stdout, stderr io.Writer, result service.CacheResult, scope scoop.InstallScope, dryRun bool) {
+	_, _ = fmt.Fprintln(stdout, ui.Heading(cacheRemoveHeading(scope)))
+
+	kind := ui.StatusDone
+	if dryRun {
+		kind = ui.StatusDry
+	}
+
 	if result.FilesRemoved == 0 {
-		_, _ = fmt.Fprintln(os.Stdout, ui.Skip("cache", "nothing to remove"))
+		_, _ = fmt.Fprintln(stdout, ui.RenderStatusSummary(ui.StatusSkip, "cache", "nothing to remove"))
+		for _, err := range result.Errors {
+			_, _ = fmt.Fprintln(stderr, ui.WarnLine(err))
+		}
 		return
 	}
 
-	_, _ = fmt.Fprintln(os.Stdout, ui.Heading("Removing cache files"))
-
-	action := "Removed"
-	if dryRun {
-		action = "Would remove"
-		_, _ = fmt.Fprintln(os.Stdout, ui.Dry("cache", "no files will be removed"))
-	}
-
-	// Show what was removed
+	// Show what was removed or would be removed.
 	if dryRun || result.FilesRemoved <= 5 {
 		for _, e := range result.Entries {
-			_, _ = fmt.Fprintln(os.Stdout, ui.Detail(fmt.Sprintf("%s %s", ui.Dim(e.Name), ui.Dim(ui.FormatSize(e.Size)))))
+			detail := fmt.Sprintf("%s %s", ui.Dim(e.Name), ui.Dim(ui.FormatSize(e.Size)))
+			_, _ = fmt.Fprintln(stdout, ui.StatusWithOptions(kind, "remove", detail, ui.StatusOptions{}))
 		}
 	}
 
-	// Summary
-	parts := []string{
-		fmt.Sprintf("%d file(s)", result.FilesRemoved),
-		ui.FormatSize(result.BytesFreed),
-	}
-
-	_, _ = fmt.Fprintln(os.Stdout, ui.Heading("Summary"))
-	status := ui.Done(strings.ToLower(action), strings.Join(parts, ", "))
-	if dryRun {
-		status = ui.Dry(strings.ToLower(action), strings.Join(parts, ", "))
-	}
-	_, _ = fmt.Fprintln(os.Stdout, status)
+	_, _ = fmt.Fprintln(stdout, ui.RenderStatusSummary(kind, "cache", cacheRemoveSummaryDetail(result, dryRun)))
 
 	// Show errors
 	if len(result.Errors) > 0 {
-		_, _ = fmt.Fprintln(os.Stdout, "")
 		for _, err := range result.Errors {
-			_, _ = fmt.Fprintln(os.Stderr, ui.WarnLine(err))
+			_, _ = fmt.Fprintln(stderr, ui.WarnLine(err))
 		}
 	}
+}
+
+func cacheRemoveHeading(scope scoop.InstallScope) string {
+	if scope == scoop.ScopeGlobal {
+		return "Removing cache [global]"
+	}
+	return "Removing cache"
+}
+
+func cacheRemoveSummaryDetail(result service.CacheResult, dryRun bool) string {
+	if dryRun {
+		return fmt.Sprintf("%d file(s), %s would be freed", result.FilesRemoved, ui.FormatSize(result.BytesFreed))
+	}
+	return fmt.Sprintf("%d file(s), %s freed", result.FilesRemoved, ui.FormatSize(result.BytesFreed))
 }

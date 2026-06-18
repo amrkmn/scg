@@ -2,7 +2,6 @@ package bucket
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"go.noz.one/scg/internal/known"
@@ -20,16 +19,12 @@ func NewKnownCommand() *cobra.Command {
 			rows := make([][]string, 0, len(buckets))
 			for _, b := range buckets {
 				rows = append(rows, []string{
-					ui.Bold(b.Name),
+					ui.BoldCyan(b.Name),
 					b.Source,
 				})
 			}
 
-			output := ui.FormatLineColumns(rows, []float64{0.25, 0.75})
-			// FormatLineColumns returns a single newline-separated string
-			for _, line := range strings.Split(strings.TrimRight(output, "\n"), "\n") {
-				fmt.Println(line)
-			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderTable(nil, rows, []float64{0.25, 0.75}, ""))
 
 			return nil
 		},

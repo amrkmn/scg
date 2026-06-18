@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 
@@ -19,7 +20,7 @@ func NewHelpCommand(root *cobra.Command) *cobra.Command {
 		Example: "scg help\nscg help install",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				printHelp(root)
+				printHelp(cmd.OutOrStdout(), root)
 				return nil
 			}
 
@@ -39,26 +40,20 @@ func NewHelpCommand(root *cobra.Command) *cobra.Command {
 	return cmd
 }
 
-func printHelp(root *cobra.Command) {
-	fmt.Println("Usage: scg <command> [<args>]")
-	fmt.Println()
-	fmt.Println("Available commands are listed below.")
-	fmt.Println()
-	fmt.Println("Type 'scg help <command>' to get more help for a specific command.")
-	fmt.Println()
+func printHelp(w io.Writer, root *cobra.Command) {
+	_, _ = fmt.Fprintln(w, "Usage: scg <command> [<args>]")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Available commands are listed below.")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Type 'scg help <command>' to get more help for a specific command.")
+	_, _ = fmt.Fprintln(w)
 
 	commands := root.Commands()
 	sort.Slice(commands, func(i, j int) bool {
 		return commands[i].Name() < commands[j].Name()
 	})
 
-	maxLen := 0
-	for _, c := range commands {
-		if len(c.Name()) > maxLen {
-			maxLen = len(c.Name())
-		}
-	}
-
+	rows := make([][]string, 0, len(commands))
 	for _, c := range commands {
 		if c.Hidden {
 			continue
@@ -69,7 +64,8 @@ func printHelp(root *cobra.Command) {
 			short = "(no description)"
 		}
 		short = strings.SplitN(short, "\n", 2)[0]
-		padding := strings.Repeat(" ", maxLen-len(name)+2)
-		fmt.Printf("  %s%s%s\n", ui.Bold(name), padding, short)
+		rows = append(rows, []string{ui.BoldCyan(name), short})
 	}
+
+	_, _ = fmt.Fprintln(w, ui.RenderTable([]string{"Command", "Description"}, rows, []float64{0.25, 0.75}, fmt.Sprintf("%d command(s)", len(rows))))
 }

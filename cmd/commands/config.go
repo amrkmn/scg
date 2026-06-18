@@ -2,10 +2,9 @@ package commands
 
 import (
 	"fmt"
-	"os"
+	"io"
 	"sort"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 	"go.noz.one/scg/internal/cmdctx"
@@ -41,15 +40,7 @@ func NewConfigCommand() *cobra.Command {
 					ctx.GetLogger().Skip("config", "no values set")
 					return nil
 				}
-				ctx.GetLogger().Header("Config")
-				keys := make([]string, 0, len(config))
-				for k := range config {
-					keys = append(keys, k)
-				}
-				sort.Strings(keys)
-				for _, k := range keys {
-					_, _ = fmt.Fprintf(os.Stdout, "%s: %s\n", ui.Green(k), formatConfigListValue(config[k]))
-				}
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderKeyValueBlock("Config", formatConfigPairs(config)))
 			case 1:
 				// Get.
 				val, ok := svc.Get(args[0])
@@ -57,7 +48,7 @@ func NewConfigCommand() *cobra.Command {
 					ctx.GetLogger().Skip(args[0], "key not found")
 					return nil
 				}
-				printConfigValue(val)
+				printConfigValue(cmd.OutOrStdout(), val)
 			case 2:
 				// Delete or set.
 				if args[0] == "rm" {
@@ -79,34 +70,30 @@ func NewConfigCommand() *cobra.Command {
 	return cmd
 }
 
-func printConfigValue(value any) {
+func printConfigValue(w io.Writer, value any) {
 	if m, ok := value.(map[string]any); ok {
-		printConfigMap(m)
+		printConfigMap(w, m)
 		return
 	}
-	_, _ = fmt.Fprintln(os.Stdout, value)
+	_, _ = fmt.Fprintln(w, value)
 }
 
-func printConfigMap(m map[string]any) {
-	keys := make([]string, 0, len(m))
-	for k := range m {
+func printConfigMap(w io.Writer, m map[string]any) {
+	_, _ = fmt.Fprintln(w, ui.RenderKeyValueBlock("", formatConfigPairs(m)))
+}
+
+func formatConfigPairs(config map[string]any) []ui.KeyValue {
+	keys := make([]string, 0, len(config))
+	for k := range config {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, strings.Join(keys, "\t"))
-	separators := make([]string, 0, len(keys))
+	pairs := make([]ui.KeyValue, 0, len(keys))
 	for _, key := range keys {
-		separators = append(separators, strings.Repeat("-", len(key)))
+		pairs = append(pairs, ui.KeyValue{Key: key, Value: formatConfigListValue(config[key])})
 	}
-	_, _ = fmt.Fprintln(w, strings.Join(separators, "\t"))
-	values := make([]string, 0, len(keys))
-	for _, key := range keys {
-		values = append(values, fmt.Sprint(m[key]))
-	}
-	_, _ = fmt.Fprintln(w, strings.Join(values, "\t"))
-	_ = w.Flush()
+	return pairs
 }
 
 func formatConfigListValue(value any) string {

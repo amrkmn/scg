@@ -299,22 +299,11 @@ func newShimListCmd() *cobra.Command {
 			}
 
 			logger.Header("Shims")
-
 			sort.Slice(shims, func(i, j int) bool {
 				return shims[i].Name < shims[j].Name
 			})
 
-			maxName := 0
-			for _, s := range shims {
-				if len(s.Name) > maxName {
-					maxName = len(s.Name)
-				}
-			}
-
-			_, _ = fmt.Fprintf(os.Stdout, "%s  %s  %s\n",
-				ui.PadRight(ui.BoldGreen("Name"), maxName),
-				ui.BoldGreen("Source"),
-				ui.BoldGreen("Path"))
+			rows := make([][]string, 0, len(shims))
 
 			for _, s := range shims {
 				source := s.Source
@@ -325,14 +314,10 @@ func newShimListCmd() *cobra.Command {
 				if s.Global {
 					scopeTag = " " + ui.Dim("[global]")
 				}
-				_, _ = fmt.Fprintf(os.Stdout, "%s  %s  %s%s\n",
-					ui.PadRight(ui.Cyan(s.Name), maxName),
-					source,
-					s.Path,
-					scopeTag)
+				rows = append(rows, []string{ui.BoldCyan(s.Name), source, s.Path + scopeTag})
 			}
 
-			fmt.Printf("\n%s shim(s)\n", ui.Dim(fmt.Sprintf("%d", len(shims))))
+			fmt.Fprintln(cmd.OutOrStdout(), ui.RenderTable([]string{"Name", "Source", "Path"}, rows, []float64{0.25, 0.2, 0.55}, fmt.Sprintf("%d shim(s)", len(shims))))
 			return nil
 		},
 	}
@@ -404,22 +389,7 @@ func newShimInfoCmd() *cobra.Command {
 
 			source := appFromPath(targetPath)
 
-			logger.Header("Shim " + name)
-			fmt.Printf("Name:      %s\n", name)
-			fmt.Printf("Path:      %s\n", targetPath)
-			if args2 != "" {
-				fmt.Printf("Args:      %s\n", args2)
-			}
-			fmt.Printf("Source:    %s\n", source)
-			fmt.Printf("Scope:     %s\n", scopeLabel)
-			if _, err := os.Stat(exePath); err == nil {
-				fmt.Printf("Shim exe:  %s\n", exePath)
-			}
-
-			alternatives := findAlternatives(name, paths.Shims, source)
-			if len(alternatives) > 0 {
-				fmt.Printf("Alternatives: %s\n", strings.Join(alternatives, ", "))
-			}
+			fmt.Fprintln(cmd.OutOrStdout(), ui.RenderKeyValueBlock("Shim "+name, buildShimInfoPairs(name, targetPath, args2, source, scopeLabel, exePath, findAlternatives(name, paths.Shims, source))))
 
 			return nil
 		},
@@ -513,6 +483,27 @@ func appFromPath(target string) string {
 		}
 	}
 	return ""
+}
+
+func buildShimInfoPairs(name, targetPath, args, source, scopeLabel, exePath string, alternatives []string) []ui.KeyValue {
+	pairs := []ui.KeyValue{
+		{Key: "Name", Value: name},
+		{Key: "Path", Value: targetPath},
+		{Key: "Source", Value: source},
+		{Key: "Scope", Value: scopeLabel},
+	}
+	if args != "" {
+		pairs = append(pairs[:2], append([]ui.KeyValue{{Key: "Args", Value: args}}, pairs[2:]...)...)
+	}
+	if exePath != "" {
+		if _, err := os.Stat(exePath); err == nil {
+			pairs = append(pairs, ui.KeyValue{Key: "Shim exe", Value: exePath})
+		}
+	}
+	if len(alternatives) > 0 {
+		pairs = append(pairs, ui.KeyValue{Key: "Alternatives", Value: strings.Join(alternatives, ", ")})
+	}
+	return pairs
 }
 
 func findAlternatives(name, shimDir, currentSource string) []string {

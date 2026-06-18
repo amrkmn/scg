@@ -4,8 +4,10 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"go.noz.one/scg/internal/app"
 	"go.noz.one/scg/internal/cmdctx"
 	"go.noz.one/scg/internal/scoop"
+	"go.noz.one/scg/internal/ui"
 )
 
 // NewHoldCommand creates the hold subcommand.
@@ -13,43 +15,74 @@ func NewHoldCommand() *cobra.Command {
 	var flagGlobal bool
 
 	cmd := &cobra.Command{
-		Use:     "hold <app>",
-		Short:   "Hold an app to prevent updates",
-		Args:    cobra.ExactArgs(1),
-		Example: "scg hold git\nscg hold -g git",
+		Use:     "hold <app> [app...]",
+		Short:   "Hold apps to prevent updates",
+		Args:    cobra.MinimumNArgs(1),
+		Example: "scg hold git\nscg hold -g git\nscg hold git nodejs",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmdctx.MustFromCmd(cmd)
-			app := args[0]
 			scope := scoop.ScopeUser
 			if flagGlobal {
 				scope = scoop.ScopeGlobal
 			}
 
-			if app == "scoop" {
-				ctx.GetLogger().Done("scoop", "held")
-				return nil
+			var held, skipped, failed int
+			for _, app := range args {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Heading(formatHoldHeading("Holding", app, scope)))
+				r := holdOne(ctx, app, scope)
+				switch {
+				case r == 0:
+					held++
+				case r == 1:
+					skipped++
+				default:
+					failed++
+				}
 			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderStatusSummary(ui.StatusDone, "hold", fmt.Sprintf("%d held, %d skipped, %d failed", held, skipped, failed)))
 
-			installed, err := ctx.Services.Apps.GetInstalledApp(app, scope)
-			if err != nil {
-				ctx.GetLogger().Error(fmt.Sprintf("%s is not installed in %s scope", app, scope))
-				return err
+			if failed > 0 {
+				return fmt.Errorf("%d app(s) failed to hold", failed)
 			}
-
-			if installed.Held {
-				ctx.GetLogger().Skip(app, "already held")
-				return nil
-			}
-
-			if err := ctx.Services.Apps.SetHold(app, scope, true); err != nil {
-				return fmt.Errorf("failed to hold '%s': %w", app, err)
-			}
-
-			ctx.GetLogger().Done(app, "held")
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVarP(&flagGlobal, "global", "g", false, "Hold a globally installed app")
+	cmd.Flags().BoolVarP(&flagGlobal, "global", "g", false, "Hold globally installed apps")
 	return cmd
+}
+
+// holdOne holds a single app. Returns 0 for held, 1 for skipped, 2 for failed.
+func holdOne(ctx *app.Context, appName string, scope scoop.InstallScope) int {
+	if appName == "scoop" {
+		fmt.Println()
+		fmt.Println(ui.Done("hold", ui.BoldCyan("scoop")))
+		return 0
+	}
+
+	installed, err := ctx.Services.Apps.GetInstalledApp(appName, scope)
+	if err != nil {
+		ctx.GetLogger().Error(fmt.Sprintf("%s is not installed in %s scope", appName, scope))
+		return 2
+	}
+
+	if installed.Held {
+		fmt.Println(ui.Skip("hold", ui.BoldCyan(appName)+" already held"))
+		return 1
+	}
+
+	if err := ctx.Services.Apps.SetHold(appName, scope, true); err != nil {
+		ctx.GetLogger().Error(fmt.Sprintf("failed to hold '%s': %v", appName, err))
+		return 2
+	}
+
+	fmt.Println(ui.Done("hold", ui.BoldCyan(appName)))
+	return 0
+}
+
+func formatHoldHeading(action, app string, scope scoop.InstallScope) string {
+	if scope == scoop.ScopeGlobal {
+		return fmt.Sprintf("%s %s [global]", action, app)
+	}
+	return fmt.Sprintf("%s %s", action, app)
 }

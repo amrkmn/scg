@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -75,14 +76,14 @@ func NewCleanupCommand() *cobra.Command {
 				targets = userOnly
 			}
 
-			if flagDryRun {
-				ctx.GetLogger().Dry("cleanup", "no files will be removed")
+			if flagAll || (len(args) > 0 && args[0] == "*") {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Heading("Cleaning installed apps"))
+			} else if len(args) > 0 {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Heading(fmt.Sprintf("Cleaning %s", args[0])))
 			}
 
-			if flagAll || (len(args) > 0 && args[0] == "*") {
-				ctx.GetLogger().Header("Cleaning installed apps")
-			} else if len(args) > 0 {
-				ctx.GetLogger().Header(fmt.Sprintf("Cleaning %s", args[0]))
+			if flagDryRun {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Dry("cleanup", "no files will be removed"))
 			}
 
 			var results []service.CleanupResult
@@ -102,7 +103,7 @@ func NewCleanupCommand() *cobra.Command {
 			}
 
 			for _, r := range results {
-				displayCleanupResult(r, maxLen)
+				displayCleanupResult(cmd.OutOrStdout(), cmd.ErrOrStderr(), r, maxLen, flagDryRun)
 			}
 
 			// Clean up any remaining .download temp files.
@@ -113,7 +114,7 @@ func NewCleanupCommand() *cobra.Command {
 				}
 			}
 
-			displayCleanupSummary(results)
+			displayCleanupSummary(cmd.OutOrStdout(), cmd.ErrOrStderr(), results, flagDryRun)
 			return nil
 		},
 	}
@@ -126,7 +127,7 @@ func NewCleanupCommand() *cobra.Command {
 	return cmd
 }
 
-func displayCleanupResult(r service.CleanupResult, maxNameLen int) {
+func displayCleanupResult(stdout, stderr io.Writer, r service.CleanupResult, maxNameLen int, dryRun bool) {
 	if len(r.OldVersions) == 0 && len(r.FailedVersions) == 0 && len(r.CacheFiles) == 0 {
 		return
 	}
@@ -141,29 +142,32 @@ func displayCleanupResult(r service.CleanupResult, maxNameLen int) {
 		totalSize += c.Size
 	}
 
-	name := r.App
-	for len(name) < maxNameLen {
-		name += " "
-	}
-
 	detail := ""
 	if len(versionNames) > 0 {
 		detail = fmt.Sprintf("%s (%s)", joinStrings(versionNames), ui.Dim(ui.FormatSize(totalSize)))
+	} else if len(r.CacheFiles) > 0 {
+		detail = fmt.Sprintf("%d cache file(s) (%s)", len(r.CacheFiles), ui.Dim(ui.FormatSize(totalSize)))
 	}
-	cacheDetail := ""
-	if len(r.CacheFiles) > 0 {
-		cacheDetail = fmt.Sprintf(" +%d cache file(s)", len(r.CacheFiles))
+	if len(versionNames) > 0 && len(r.CacheFiles) > 0 {
+		detail += fmt.Sprintf(" +%d cache file(s)", len(r.CacheFiles))
 	}
 
 	scopeTag := ui.Dim("[" + string(r.Scope) + "]")
-	_, _ = fmt.Fprintf(os.Stdout, "%s\n", ui.Detail(fmt.Sprintf("%s %s%s %s", ui.Cyan(name), detail, cacheDetail, scopeTag)))
+	if detail != "" {
+		detail += " "
+	}
+	kind := ui.StatusDone
+	if dryRun {
+		kind = ui.StatusDry
+	}
+	_, _ = fmt.Fprintln(stdout, ui.StatusWithOptions(kind, ui.PadRight(ui.BoldCyan(r.App), maxNameLen), detail+scopeTag, ui.StatusOptions{}))
 
 	for _, f := range r.FailedVersions {
-		_, _ = fmt.Fprintln(os.Stdout, ui.WarnLine(fmt.Sprintf("could not remove %s: %v", f.Version, f.Error)))
+		_, _ = fmt.Fprintln(stderr, ui.WarnLine(fmt.Sprintf("could not remove %s: %v", f.Version, f.Error)))
 	}
 }
 
-func displayCleanupSummary(results []service.CleanupResult) {
+func displayCleanupSummary(stdout, stderr io.Writer, results []service.CleanupResult, dryRun bool) {
 	var totalVersions, totalCache int
 	var totalSize int64
 	var hasLocked bool
@@ -183,25 +187,28 @@ func displayCleanupSummary(results []service.CleanupResult) {
 	}
 
 	if totalVersions == 0 && totalCache == 0 {
-		_, _ = fmt.Fprintln(os.Stdout, ui.Skip("cleanup", "nothing to remove"))
+		_, _ = fmt.Fprintln(stdout, ui.RenderStatusSummary(ui.StatusSkip, "cleanup", "nothing to remove"))
 		return
 	}
 
-	parts := []string{}
+	parts := make([]string, 0, 3)
 	if totalVersions > 0 {
-		parts = append(parts, fmt.Sprintf("%d old version(s) removed", totalVersions))
+		parts = append(parts, fmt.Sprintf("%d old version(s)", totalVersions))
 	}
 	if totalCache > 0 {
-		parts = append(parts, fmt.Sprintf("%d cache file(s) removed", totalCache))
+		parts = append(parts, fmt.Sprintf("%d cache file(s)", totalCache))
 	}
-	parts = append(parts, fmt.Sprintf("%s freed", ui.FormatSize(totalSize)))
-
-	_, _ = fmt.Fprintln(os.Stdout, ui.Heading("Summary"))
-	_, _ = fmt.Fprintln(os.Stdout, ui.Done("cleanup", joinStrings(parts)))
+	if dryRun {
+		parts = append(parts, fmt.Sprintf("%s would be freed", ui.FormatSize(totalSize)))
+		_, _ = fmt.Fprintln(stdout, ui.RenderStatusSummary(ui.StatusDry, "cleanup", "would remove "+joinStrings(parts)))
+	} else {
+		parts = append(parts, fmt.Sprintf("%s freed", ui.FormatSize(totalSize)))
+		_, _ = fmt.Fprintln(stdout, ui.RenderStatusSummary(ui.StatusDone, "cleanup", "removed "+joinStrings(parts)))
+	}
 
 	if hasLocked {
-		_, _ = fmt.Fprintf(os.Stdout, "\n%s\n", ui.WarnLine("some versions could not be removed; files may be in use"))
-		_, _ = fmt.Fprintln(os.Stdout, ui.Detail(ui.Dim("close running applications and try again")))
+		_, _ = fmt.Fprintln(stderr, ui.WarnLine("some versions could not be removed; files may be in use"))
+		_, _ = fmt.Fprintln(stderr, ui.Detail(ui.Dim("close running applications and try again")))
 	}
 }
 

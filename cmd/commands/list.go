@@ -3,7 +3,6 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -54,29 +53,20 @@ func NewListCommand() *cobra.Command {
 					}
 				}
 				data, _ := json.MarshalIndent(out, "", "  ")
-				_, _ = fmt.Fprintln(os.Stdout, string(data))
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), string(data))
 				return nil
 			}
 
 			if len(apps) == 0 {
 				if filter != "" {
-					_, _ = fmt.Fprintln(os.Stdout, ui.Skip("apps", fmt.Sprintf("no matches for %s", filter)))
+					_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Skip("apps", fmt.Sprintf("no matches for %s", filter)))
 				} else {
-					_, _ = fmt.Fprintln(os.Stdout, ui.Skip("apps", "none installed"))
+					_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Skip("apps", "none installed"))
 				}
 				return nil
 			}
 
-			// Table: Name | Version | Source | Updated | Info
-			// Weights: 2.0, 1.0, 1.0, 0.5, 1.5
-			header := []string{
-				ui.BoldGreen("Name"),
-				ui.BoldGreen("Version"),
-				ui.BoldGreen("Source"),
-				ui.BoldGreen("Updated"),
-				ui.BoldGreen("Info"),
-			}
-			rows := [][]string{header}
+			rows := make([][]string, 0, len(apps))
 
 			for _, a := range apps {
 				info := ""
@@ -96,7 +86,7 @@ func NewListCommand() *cobra.Command {
 				}
 
 				rows = append(rows, []string{
-					ui.Cyan(a.Name),
+					ui.BoldCyan(a.Name),
 					a.Version,
 					a.Bucket,
 					updated,
@@ -104,14 +94,16 @@ func NewListCommand() *cobra.Command {
 				})
 			}
 
-			_, _ = fmt.Fprintln(os.Stdout, ui.FormatLineColumns(rows, []float64{2.0, 1.0, 1.0, 0.5, 1.5}))
-
-			// Footer
 			suffix := ""
 			if filter != "" {
 				suffix = fmt.Sprintf(" matching '%s'", filter)
 			}
-			_, _ = fmt.Fprintf(os.Stdout, "\n%s\n", ui.Dim(fmt.Sprintf("%d app(s) installed%s", len(apps), suffix)))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderTable(
+				[]string{"Name", "Version", "Source", "Updated", "Info"},
+				rows,
+				[]float64{2.0, 1.0, 1.0, 0.5, 1.5},
+				fmt.Sprintf("%d app(s) installed%s", len(apps), suffix),
+			))
 			return nil
 		},
 	}

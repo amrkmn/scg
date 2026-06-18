@@ -20,7 +20,6 @@ func NewUnusedCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmdctx.FromCmd(cmd)
-			logger := ctx.GetLogger()
 
 			var scope scoop.InstallScope
 			if global {
@@ -31,17 +30,16 @@ func NewUnusedCommand() *cobra.Command {
 
 			buckets, err := ctx.Services.Buckets.List(scope)
 			if err != nil {
-				logger.Error(fmt.Sprintf("failed to list buckets: %v", err))
+				_, _ = fmt.Fprintln(os.Stderr, ui.FailLine("failed to list buckets: "+err.Error()))
 				os.Exit(1)
 			}
 
 			installedApps, err := ctx.Services.Apps.ListInstalled("")
 			if err != nil {
-				logger.Error(fmt.Sprintf("failed to list installed apps: %v", err))
+				_, _ = fmt.Fprintln(os.Stderr, ui.FailLine("failed to list installed apps: "+err.Error()))
 				os.Exit(1)
 			}
 
-			// Build set of buckets that provide at least one installed app
 			usedBuckets := make(map[string]struct{})
 			for _, app := range installedApps {
 				if app.Bucket != "" {
@@ -56,16 +54,18 @@ func NewUnusedCommand() *cobra.Command {
 				}
 			}
 
+			_, _ = fmt.Println(ui.Heading("Unused buckets"))
+
 			if len(unused) == 0 {
-				logger.Skip("buckets", "none unused")
-				return nil
+				_, _ = fmt.Println(ui.Skip("buckets", "none unused"))
+			} else {
+				for _, b := range unused {
+					_, _ = fmt.Printf("  %s  %s\n", ui.Bold(b.Name), ui.Dim(b.Source))
+				}
 			}
 
-			logger.Header("Unused buckets")
-
-			for _, b := range unused {
-				fmt.Printf("%s  %s\n", ui.Bold(b.Name), ui.Dim(b.Source))
-			}
+			_, _ = fmt.Println()
+			_, _ = fmt.Println(ui.RenderStatusSummary(ui.StatusDone, "bucket", fmt.Sprintf("%d unused", len(unused))))
 
 			return nil
 		},

@@ -90,6 +90,6 @@ func NewExportCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&flagConfig, "config", false, "Include Scoop configuration in export")
+	cmd.Flags().BoolVarP(&flagConfig, "config", "c", false, "Include Scoop configuration in export")
 	return cmd
 }

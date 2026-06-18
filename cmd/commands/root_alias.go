@@ -23,7 +23,7 @@ func ExpandAliasArgs(root *cobra.Command, version string, args []string) ([]stri
 		return nil, false, nil
 	}
 
-	appCtx := app.NewContext(version, hasVerboseFlag(args))
+	appCtx := app.NewContext(version, hasVerboseFlag(args), false, false)
 	aliases, _, err := loadAliases(appCtx.Services.Config)
 	if err != nil {
 		return nil, false, err

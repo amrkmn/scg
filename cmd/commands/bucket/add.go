@@ -40,23 +40,29 @@ func NewAddCommand() *cobra.Command {
 				scope = scoop.ScopeGlobal
 			}
 
-			spinner := ui.NewSpinner(fmt.Sprintf("Adding bucket %s", name))
-			spinner.Start()
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Heading(formatBucketHeading("Adding", name, scope)))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.StatusWithOptions(ui.StatusRunning, "clone", ui.Dim(url), ui.StatusOptions{}))
 
 			err := ctx.Services.Buckets.Add(name, url, scope, func(current, total int) {})
-
-			spinner.Stop()
 
 			if err != nil {
 				logger.Error(fmt.Sprintf("failed to add bucket %q: %v", name, err))
 				os.Exit(1)
 			}
 
-			logger.Done("bucket", fmt.Sprintf("added %s", name))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Done("bucket", ui.BoldCyan(name)))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderStatusSummary(ui.StatusDone, "bucket", "1 added, 0 skipped"))
 			return nil
 		},
 	}
 
 	cmd.Flags().BoolVarP(&global, "global", "g", false, "Add bucket to global Scoop installation")
 	return cmd
+}
+
+func formatBucketHeading(action, name string, scope scoop.InstallScope) string {
+	if scope == scoop.ScopeGlobal {
+		return fmt.Sprintf("%s bucket %s [global]", action, name)
+	}
+	return fmt.Sprintf("%s bucket %s", action, name)
 }

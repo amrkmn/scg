@@ -6,12 +6,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 	"go.noz.one/scg/internal/cmdctx"
 	"go.noz.one/scg/internal/scoop"
 	"go.noz.one/scg/internal/service"
+	"go.noz.one/scg/internal/ui"
 )
 
 // NewAliasCommand creates the alias subcommand.
@@ -129,23 +129,28 @@ func newAliasListCommand() *cobra.Command {
 			}
 			sort.Strings(names)
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			if verbose {
-				_, _ = fmt.Fprintln(w, "Name\tCommand\tSummary")
-			}
 			paths := scoop.ResolvePaths(scoop.ScopeUser)
+			rows := make([][]string, 0, len(names))
 			for _, name := range names {
 				command, summary := readAliasScript(filepath.Join(paths.Shims, aliasScriptName(aliases, name)+".ps1"))
 				if command == "" {
 					command = "<BROKEN>"
 				}
 				if verbose {
-					_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", name, command, summary)
+					rows = append(rows, []string{ui.BoldCyan(name), command, summary})
 				} else {
-					_, _ = fmt.Fprintf(w, "%s\t%s\n", name, command)
+					rows = append(rows, []string{ui.BoldCyan(name), command})
 				}
 			}
-			return w.Flush()
+
+			headers := []string{"Name", "Command"}
+			weights := []float64{0.25, 0.75}
+			if verbose {
+				headers = []string{"Name", "Command", "Summary"}
+				weights = []float64{0.2, 0.55, 0.25}
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), ui.RenderTable(headers, rows, weights, fmt.Sprintf("%d alias(es)", len(rows))))
+			return nil
 		},
 	}
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show alias descriptions and headers")

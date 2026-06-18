@@ -12,6 +12,7 @@ import (
 	"go.noz.one/scg/internal/cmdctx"
 	"go.noz.one/scg/internal/scoop"
 	"go.noz.one/scg/internal/service"
+	"go.noz.one/scg/internal/ui"
 )
 
 func NewImportCommand() *cobra.Command {
@@ -42,6 +43,8 @@ func NewImportCommand() *cobra.Command {
 			if err := json.Unmarshal(data, &exportData); err != nil {
 				return fmt.Errorf("invalid JSON: %w", err)
 			}
+
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Heading(fmt.Sprintf("Importing from %s", filePath)))
 
 			if err := importBuckets(ctx, exportData); err != nil {
 				ctx.GetLogger().Warn(err.Error())
