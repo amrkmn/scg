@@ -7,6 +7,7 @@ import (
 	"go.noz.one/scg/internal/cmdctx"
 	"go.noz.one/scg/internal/scoop"
 	"go.noz.one/scg/internal/service"
+	"go.noz.one/scg/internal/ui"
 )
 
 func NewUninstallCommand() *cobra.Command {
@@ -26,6 +27,8 @@ func NewUninstallCommand() *cobra.Command {
 				scope = scoop.ScopeGlobal
 			}
 
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Heading(formatUninstallHeading(args, scope)))
+
 			opts := service.UninstallOptions{
 				Scope: scope,
 				Purge: flagPurge,
@@ -42,6 +45,8 @@ func NewUninstallCommand() *cobra.Command {
 				}
 			}
 
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderStatusSummary(ui.StatusDone, "uninstall", fmt.Sprintf("%d uninstalled, %d failed", uninstalled, failed)))
+
 			if failed > 0 {
 				return fmt.Errorf("%d app(s) failed to uninstall", failed)
 			}
@@ -53,4 +58,15 @@ func NewUninstallCommand() *cobra.Command {
 	cmd.Flags().BoolVarP(&flagPurge, "purge", "p", false, "Remove persisted data")
 
 	return cmd
+}
+
+func formatUninstallHeading(apps []string, scope scoop.InstallScope) string {
+	scopeTag := ""
+	if scope == scoop.ScopeGlobal {
+		scopeTag = " [global]"
+	}
+	if len(apps) == 1 {
+		return fmt.Sprintf("Uninstalling %s%s", apps[0], scopeTag)
+	}
+	return fmt.Sprintf("Uninstalling %d apps%s", len(apps), scopeTag)
 }

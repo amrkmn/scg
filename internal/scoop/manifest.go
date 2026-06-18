@@ -44,6 +44,11 @@ func ReadManifest(path string) (*Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
+	return ParseManifestBytes(data)
+}
+
+// ParseManifestBytes parses a Scoop manifest from raw JSON bytes.
+func ParseManifestBytes(data []byte) (*Manifest, error) {
 	var m Manifest
 	if err := jsonFast.Unmarshal(data, &m); err != nil {
 		return nil, err

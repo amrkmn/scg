@@ -145,8 +145,8 @@ func TestSetupHookEnvVars(t *testing.T) {
 		if got["app"] != "git" {
 			t.Errorf("app = %q, want %q", got["app"], "git")
 		}
-		if _, ok := got["global"]; ok {
-			t.Error("global should not be set for user scope")
+		if got["global"] != "" {
+			t.Errorf("global = %q, want empty string for user scope", got["global"])
 		}
 	})
 
