@@ -15,6 +15,8 @@ jobs:
     strategy:
       matrix:
         arch: [amd64, 386, arm64]
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -51,7 +53,7 @@ jobs:
           echo "Building nightly version: $VERSION"
 
       - name: Build shim
-        run: make build-shim
+        run: make build-shim-${{ matrix.arch }}
 
       - name: Run tests
         run: make test
@@ -79,17 +81,25 @@ jobs:
           pattern: scg-*
           merge-multiple: true
 
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum *.exe > checksums.txt
+          cat checksums.txt
+
       - name: Update nightly release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           name: Nightly Build
           tag_name: nightly
-          files: dist/*.exe
+          files: dist/*
           draft: false
           prerelease: true
           body: |
-            This is an automated nightly build.
-            
-            **Commit:** ${{ github.sha }}
-            
-            ⚠️ This is a development build and may be unstable.
+            Automated nightly build from [`${{ github.sha }}`](https://github.com/${{ github.repository }}/commit/${{ github.sha }}).
+
+            **Version:** `${{ needs.nightly.outputs.version }}`
+
+            ⚠️ Development build — may be unstable.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
