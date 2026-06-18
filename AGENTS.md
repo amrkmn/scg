@@ -1,68 +1,215 @@
-# AGENTS
+# AGENTS.md
 
-## Scope
-Single Go module (`go.noz.one/scg`) — a Scoop-compatible Windows package manager CLI. Windows-only runtime; most commands shell out to Windows tools (`cmd`, `reg`, `attrib`, `msiexec`, PowerShell).
+Guidance for coding agents working in this repository.
+
+## Project overview
+
+`scg` is a Scoop-compatible Windows package manager CLI written in Go.
+
+- Module: `go.noz.one/scg`
+- Runtime target: Windows
+- CLI framework: Cobra
+- Main entrypoint: `cmd/main.go`
+- Core behavior: reimplements Scoop operations in Go, with PowerShell/Windows tools where needed for compatibility.
+
+Use the real Scoop installation as the compatibility reference when behavior is unclear. The active Scoop app usually lives under `~/scoop/apps/scoop/current`. User scope resolves under `%USERPROFILE%\scoop`; global scope resolves under `C:\ProgramData\scoop`.
+
+## Before changing code
+
+- Keep changes surgical and directly tied to the request.
+- Match existing style; do not introduce broad refactors while fixing a focused issue.
+- Be careful with commands that mutate real Scoop state.
+- Prefer unit tests over integration tests that touch the host Scoop installation.
+- If behavior differs from Scoop, preserve Scoop compatibility unless the user explicitly asks otherwise.
 
 ## Build prerequisites
-- **Go 1.26+** (go.mod specifies `go 1.26`; CI uses `stable`)
-- **Zig 0.16.0** — required to build `shim.exe`, which is `//go:embed`'d into the binary. Zig is **not optional**: `build`, `test`, and `check` all depend on `build-shim` first.
-- The file `internal/install/assets/shim.exe` is gitignored and must be rebuilt locally via `make build-shim` before anything else compiles.
-- Zig shim links Win32 libs (`shell32`, `shlwapi`); built with `optimize = .ReleaseSmall` and `strip = true`.
+
+- Go 1.26+ (`go.mod` uses `go 1.26`; CI uses `stable`).
+- Zig 0.16.0 for building the embedded shim.
+- Windows for normal runtime behavior and CI parity.
+
+The shim binary is generated from `shim/src/main.zig` and copied to `internal/install/assets/shim.exe`, which is embedded by `internal/install/shim.go`.
+
+`internal/install/assets/shim.exe` is gitignored. If it is missing, stale, or `shim/` changes, run:
+
+```sh
+make build-shim
+```
 
 ## Developer commands
-Use `make` (not `just`):
 
-- `make build` — Build to `dist/scg.exe` (depends on `build-shim`)
-- `make build-shim` — Compile `shim/src/main.zig` → `internal/install/assets/shim.exe`
-- `make test` — `go test ./...` (depends on `build-shim` — Zig must be available)
-- `make bench` — `go test -bench=. -benchmem ./...`
-- `make lint` — `golangci-lint run --timeout=5m` (no custom config file)
-- `make fmt` — `go fmt ./...`
-- `make check` — `fmt → lint → test` (full pre-commit flow)
-- `make run ARGS=version` — Quick smoke test
-- `make build-amd64 / build-386 / build-arm64` — Cross-arch builds (each also builds arch-specific shim)
-- `make clean` — Remove `dist/`
-- `make release` — Tag and push a version (uses `$(VERSION)`)
-- `make draft-release` — Create GitHub draft release via `gh`
+Use `make`.
 
-Run a single test or package: `go test ./internal/scoop/...` or `go test -run TestName ./internal/install/...`
-
-Version injected at build time: `-ldflags "-X main.Version=..."`.
-
-## Architecture
-```
-cmd/main.go              → entrypoint, sets Version
-cmd/commands/root.go     → cobra wiring, PersistentPreRunE injects app.Context
-cmd/commands/*.go        → one file per CLI command
-cmd/commands/bucket/    → bucket subcommands
-internal/app/context.go  → DI container: holds all service instances + logger
-internal/cmdctx/         → cobra↔context bridge: Inject / FromCmd / MustFromCmd
-internal/service/        → business logic (search, install, update, status, etc.)
-internal/install/        → low-level ops: shims, junctions, downloads, extraction, env, hooks
-internal/scoop/          → Scoop domain types: paths, manifests, install info
-internal/known/          → hard-coded known buckets list
-internal/ui/             → output formatting, tables, colors, loader spinner
-internal/git/            → git operations for bucket management
-internal/utils/          → string helpers
-shim/src/main.zig        → the shim binary source (compiled separately)
+```sh
+make build                 # Build dist/scg.exe; runs build-shim first
+make build-shim            # Build shim/src/main.zig into internal/install/assets/shim.exe
+make test                  # Run go test ./...
+make bench                 # Run benchmarks
+make lint                  # Run golangci-lint --timeout=5m
+make fmt                   # Run go fmt ./...
+make check                 # fmt -> lint -> test
+make run ARGS=version      # Run the CLI through go run
+make clean                 # Remove dist/
+make build-amd64           # Cross-build amd64 Windows exe and shim
+make build-386             # Cross-build 386 Windows exe and shim
+make build-arm64           # Cross-build arm64 Windows exe and shim
+make build-all             # Build all release architectures
 ```
 
-Context flow: root `PersistentPreRunE` → `app.NewContext(version, verbose)` → `cmdctx.Inject` → individual commands use `cmdctx.MustFromCmd(cmd)` to access services.
+Single package/test examples:
 
-## Key patterns
-- **Scope threading**: `scoop.InstallScope` (`ScopeUser` / `ScopeGlobal`) must be passed through; resolves to `%USERPROFILE%\scoop` vs `C:\ProgramData\scoop`. All path resolution goes through `scoop.ResolvePaths(scope)`.
-- **Manifest `any` typing**: `scoop.Manifest` uses `any` for fields where Scoop allows multiple JSON shapes (string, array, map). Keep parsing tolerant; see `ParseBinField`, `GetDependencies` for patterns.
-- **Concurrent search**: `service/search.go` uses `sync.WaitGroup` for parallel bucket scans. Output ordering is handled in the command layer, not the worker layer.
-- **Embedded shim**: `internal/install/shim.go` uses `//go:embed assets/shim.exe`; falls back to Scoop's own `kiennq/shim.exe` if embedded binary is empty. Rebuild shim with `make build-shim` whenever `shim/src/main.zig` changes.
-- **JSON iteration**: Uses `json-iterator/go` (`jsonFast` var in `scoop/manifest.go`) for performance-critical manifest parsing.
+```sh
+go test ./internal/scoop/...
+go test -run TestParseBinField ./internal/install/...
+```
 
-## Safety
-- `install`, `update`, `uninstall` modify real Scoop state (shims, junctions, env/PATH via registry).
-- `cleanup` and `cache rm` delete files from Scoop directories.
-- Global operations (`--global`/`-g`) write to `C:\ProgramData\scoop` — requires elevation.
-- Use `--dry-run` flags where available before destructive changes.
+Version injection uses:
 
-## CI
-Three jobs on `windows-latest`: **test** (build + test + smoke run), **lint** (build-shim + golangci-lint), **codeql** (build-shim + CodeQL analysis). All require Zig 0.16.0 setup step.
+```sh
+go build -ldflags "-X main.Version=<version>"
+```
 
-Release pipeline (tag `v*`): cross-arch build (amd64/386/arm64) → SHA256 checksums → GitHub release. Nightly build on cron + manual dispatch.
+## Architecture map
+
+```text
+cmd/main.go              -> entrypoint, version variable, alias expansion
+cmd/commands/root.go     -> root Cobra command, global flags, app context injection
+cmd/commands/*.go        -> top-level CLI commands
+cmd/commands/bucket/     -> bucket subcommands
+internal/app/            -> app Context, logger, service wiring
+internal/cmdctx/         -> Cobra context bridge: Inject / FromCmd / MustFromCmd
+internal/service/        -> business logic: install, update, search, status, cleanup, etc.
+internal/install/        -> low-level install operations: downloads, hashes, extraction, shims, env, hooks
+internal/scoop/          -> Scoop paths, manifests, install metadata, scope types
+internal/git/            -> git commands used for bucket management
+internal/known/          -> known Scoop bucket list
+internal/ui/             -> output formatting, tables, colors, loader
+internal/utils/          -> small helpers
+shim/src/main.zig        -> Windows shim executable source
+```
+
+Context flow:
+
+```text
+cmd/main.go
+  -> commands.NewRootCommand(version)
+  -> commands.ExpandAliasArgs(...)
+  -> root.Execute()
+  -> root PersistentPreRunE creates app.NewContext(version, verbose)
+  -> cmdctx.Inject(...)
+  -> command handlers call cmdctx.MustFromCmd(cmd)
+  -> ctx.Services.<Service>
+```
+
+## Key implementation patterns
+
+### Scope threading
+
+Always thread `scoop.InstallScope` through operations that touch Scoop state.
+
+- `scoop.ScopeUser` -> `%USERPROFILE%\scoop`
+- `scoop.ScopeGlobal` -> `C:\ProgramData\scoop`
+
+Use `scoop.ResolvePaths(scope)` for Scoop paths. Do not hand-build root/app/shim/cache paths in new code unless there is a clear reason.
+
+### Manifest parsing
+
+Scoop manifests allow multiple JSON shapes for the same field. `scoop.Manifest` intentionally uses `any` for fields like `url`, `hash`, `bin`, `depends`, `persist`, hooks, and architecture-specific data.
+
+Keep parsing tolerant. Follow existing helpers such as:
+
+- `scoop.GetDependencies`
+- `install.ParseBinField`
+- `install.ParsePersistItems`
+- architecture helpers in `internal/service/install.go`
+
+### Service layer
+
+Commands should stay thin:
+
+1. parse flags and args,
+2. resolve scope/options,
+3. call a service,
+4. print summaries/errors.
+
+Business logic belongs in `internal/service/` or `internal/install/`, not directly in Cobra command files.
+
+### Shim handling
+
+- Go writes `.shim` metadata files and shim `.exe` files in the Scoop shims directory.
+- The shim executable is built from Zig and embedded with `//go:embed assets/shim.exe`.
+- `internal/install/shim.go` falls back to Scoop's `kiennq/shim.exe` if the embedded binary is unavailable.
+- Rebuild the shim after changing `shim/src/main.zig` or `shim/build.zig`.
+
+### Output
+
+Use `internal/ui` and the app logger instead of ad-hoc formatting where possible. Keep output stable because command output is user-facing.
+
+## Safety rules
+
+These commands can modify real local Scoop state:
+
+- `install`
+- `update`
+- `uninstall`
+- `reset`
+- `cleanup`
+- `cache rm`
+- env/PATH, shim, shortcut, junction, and hook operations
+
+Global operations (`--global` / `-g`) write under `C:\ProgramData\scoop` and may require elevation.
+
+Use `--dry-run` where available before destructive changes. Avoid running mutating commands during tests or repo exploration unless the user explicitly asks.
+
+## Testing guidance
+
+- Tests use the standard library `testing` package.
+- Prefer table-driven tests.
+- Keep tests unit-level and isolated from the developer's real Scoop installation.
+- Use temp directories and environment overrides where possible.
+- Existing tests live mostly under `internal/`; `cmd/commands/root_alias_test.go` covers alias expansion.
+- `testify` is present indirectly in `go.mod` but is not used; do not add new dependency on it without a clear reason.
+
+Before finishing Go changes, run at least:
+
+```sh
+go test ./...
+```
+
+For full pre-commit validation, run:
+
+```sh
+make check
+```
+
+If `go test ./...` fails because the embedded shim asset is missing, run `make build-shim` and retry.
+
+## CI and release
+
+CI runs on `windows-latest` for pushes/PRs to `main` and `master`, ignoring docs-only changes. Jobs:
+
+- `test`: setup Go/Zig, `make build`, `make test`, smoke `make run ARGS=version`
+- `lint`: setup Go/Zig, `make build-shim`, `golangci-lint`
+- `codeql`: setup Zig, `make build-shim`, CodeQL Go analysis
+
+Release workflow:
+
+- triggered by `v*` tags or manual dispatch,
+- builds `amd64`, `386`, and `arm64` Windows binaries,
+- runs tests,
+- uploads release artifacts and SHA256 checksums for tag builds.
+
+Nightly workflow:
+
+- scheduled daily and manual,
+- builds all release architectures,
+- publishes/updates the `nightly` prerelease tag.
+
+## Common pitfalls
+
+- Do not assume manifest fields are strings; many can be arrays or maps.
+- Do not bypass `scoop.ResolvePaths` for scoped paths.
+- Do not run real install/update/uninstall flows as tests.
+- Do not forget to rebuild `internal/install/assets/shim.exe` after shim changes.
+- Do not move command business logic into Cobra handlers.
+- Do not reformat unrelated files.

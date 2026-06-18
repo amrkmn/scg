@@ -61,6 +61,17 @@ check: fmt lint test
 run:
 	go run ./cmd $(ARGS)
 
+# lint-print reports direct os.Stdout/os.Stderr writes and bare fmt.Print*
+# calls in command files that are not documented raw-output exceptions.
+lint-print:
+	@echo "=== Direct stdout/stderr writes in command files (informational) ==="
+	@rg -n "os\.(Stdout|Stderr)" cmd/commands/ -g '*.go' -g '!_test.go' --no-heading || true
+	@echo ""
+	@echo "=== Bare fmt.Print* calls in command files (informational) ==="
+	@rg -n "fmt\.(Fprint[fln]?|Print[fln]?)\s*\(" cmd/commands/ -g '*.go' -g '!_test.go' --no-heading || true
+	@echo ""
+	@echo "See .plans/logging-output-overhaul-plan.md for documented exceptions."
+
 # CI: release helpers
 tags:
 	git tag -l --sort=-v:refname
