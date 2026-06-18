@@ -1,5 +1,9 @@
 # Variables
-VERSION ?= v0.1.0
+# Auto-detect version from git. Override with VERSION=vX.Y.Z on command line or env.
+LOCAL_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+LOCAL_DATE := $(shell date +%Y.%m.%d 2>/dev/null || echo unknown)
+DEFAULT_VERSION := v0.0.0-dev.$(LOCAL_DATE).$(LOCAL_SHA)
+VERSION ?= $(DEFAULT_VERSION)
 
 .PHONY: build build-amd64 build-386 build-arm64 build-all
 .PHONY: build-shim build-shim-amd64 build-shim-386 build-shim-arm64
