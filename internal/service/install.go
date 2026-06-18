@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -158,10 +159,106 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 		}
 	}
 
+	return s.installCore(m, appName, bucketName, appInput, arch, opts)
+}
+
+// InstallFromURL downloads a manifest from a URL and installs the app.
+func (s *InstallService) InstallFromURL(manifestURL string, opts InstallOptions) InstallResult {
+	appName := appNameFromURLOrPath(manifestURL)
+	result := InstallResult{App: appName}
+
+	resp, err := http.Get(manifestURL)
+	if err != nil {
+		result.Error = fmt.Errorf("failed to download manifest: %w", err)
+		return result
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		result.Error = fmt.Errorf("failed to read manifest: %w", err)
+		return result
+	}
+
+	m, err := scoop.ParseManifestBytes(data)
+	if err != nil {
+		result.Error = fmt.Errorf("invalid manifest JSON: %w", err)
+		return result
+	}
+
+	arch := opts.Arch
+	if arch == "" {
+		arch = detectArch()
+	}
+	if opts.Scope == "" {
+		opts.Scope = scoop.ScopeUser
+	}
+
+	return s.installCore(m, appName, "[url]", appName, arch, opts)
+}
+
+// InstallFromFile reads a manifest from a local file and installs the app.
+func (s *InstallService) InstallFromFile(filePath string, opts InstallOptions) InstallResult {
+	appName := appNameFromURLOrPath(filePath)
+	result := InstallResult{App: appName}
+
+	m, err := scoop.ReadManifest(filePath)
+	if err != nil {
+		result.Error = fmt.Errorf("failed to read manifest: %w", err)
+		return result
+	}
+
+	arch := opts.Arch
+	if arch == "" {
+		arch = detectArch()
+	}
+	if opts.Scope == "" {
+		opts.Scope = scoop.ScopeUser
+	}
+
+	return s.installCore(m, appName, "[file]", appName, arch, opts)
+}
+
+// InstallWithVersion installs a specific version of an app from a bucket manifest.
+func (s *InstallService) InstallWithVersion(appInput, version string, opts InstallOptions) InstallResult {
+	result := InstallResult{App: appInput}
+	_, appName := parseBucketAndApp(appInput)
+	lookupName := appInput
+	if opts.FromBucket != "" {
+		lookupName = fmt.Sprintf("%s/%s", opts.FromBucket, appName)
+	}
+
+	_, bucket := s.manifests.FindManifestPair(lookupName)
+	if bucket == nil {
+		result.Error = fmt.Errorf("app %q not found in any bucket", appInput)
+		return result
+	}
+
+	m := bucket.Manifest
+	if m.Version != version {
+		result.Error = fmt.Errorf("version %q not found in manifest for %q (manifest version is %s); version pinning from buckets is not yet supported for versions that differ from the current manifest", version, appName, m.Version)
+		return result
+	}
+
+	arch := opts.Arch
+	if arch == "" {
+		arch = detectArch()
+	}
+	if opts.Scope == "" {
+		opts.Scope = scoop.ScopeUser
+	}
+
+	return s.installCore(m, appName, bucket.Bucket, appName, arch, opts)
+}
+
+// installCore performs the full install flow given a resolved manifest.
+func (s *InstallService) installCore(m *scoop.Manifest, appName, bucketName, displayName, arch string, opts InstallOptions) InstallResult {
+	result := InstallResult{App: displayName, Version: m.Version}
+
 	if opts.AsDependencyFlow {
-		s.ctx.GetLogger().Header(fmt.Sprintf("Installing dependency %s", appInput))
+		s.ctx.GetLogger().Header(fmt.Sprintf("Installing dependency %s", appName))
 	} else {
-		s.ctx.GetLogger().Header(fmt.Sprintf("Installing %s %s [%s] from %s", appInput, m.Version, arch, bucketName))
+		s.ctx.GetLogger().Header(fmt.Sprintf("Installing %s %s [%s] from %s", displayName, m.Version, arch, bucketName))
 	}
 
 	// Check for running processes (simplified - just warn).
@@ -577,11 +674,37 @@ func (s *InstallService) InstallSingle(appInput string, opts InstallOptions) Ins
 
 	// Show feature suggestions.
 	for _, suggestion := range manifestSuggestions(m.Suggest) {
-		logger.Log(fmt.Sprintf("'%s' suggests installing '%s'.", appInput, suggestion))
+		logger.Log(fmt.Sprintf("'%s' suggests installing '%s'.", displayName, suggestion))
 	}
 
 	result.Success = true
 	return result
+}
+
+// appNameFromURLOrPath extracts the app name from a URL or file path.
+// Strips .json extension and path components.
+func appNameFromURLOrPath(s string) string {
+	// Remove trailing @version
+	if i := strings.Index(s, "@"); i >= 0 {
+		s = s[:i]
+	}
+	s = strings.TrimSuffix(s, ".json")
+	// Handle http:// or https:// URLs: get the last path segment
+	if i := strings.LastIndex(s, "/"); i >= 0 {
+		s = s[i+1:]
+	}
+	// Handle Windows backslash paths
+	if i := strings.LastIndex(s, "\\"); i >= 0 {
+		s = s[i+1:]
+	}
+	// URL fragments
+	if i := strings.Index(s, "#"); i >= 0 {
+		s = s[:i]
+	}
+	if i := strings.Index(s, "?"); i >= 0 {
+		s = s[:i]
+	}
+	return s
 }
 
 // detectArch returns the appropriate architecture for the current system.

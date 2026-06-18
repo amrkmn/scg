@@ -189,21 +189,19 @@ func (dm *DownloadManager) Download(app, version, downloadURL string, useCache b
 	// Try aria2 first if enabled by config.
 	if cfg.Enabled {
 		if aria2Path, err := FindAria2(); err == nil {
-			_, _ = fmt.Fprintln(os.Stdout, "==> Downloading with aria2")
 			result, err := dm.downloadWithAria2(aria2Path, cachePath, downloadURL, proxy, cfg)
 			if err == nil {
 				return result, nil
 			}
-			// aria2 failed, fall back to HTTP.
 			if dm.verbose {
-				fmt.Printf("warn aria2 failed; falling back to HTTP: %v\n", err)
+				_, _ = fmt.Fprintln(os.Stderr, ui.WarnLine("aria2 failed; falling back to HTTP: "+err.Error()))
 			}
 		}
 	}
 
-	// Fall back to HTTP download.
 	if dm.verbose {
-		fmt.Printf("==> Downloading via HTTP\n  %s\n", downloadURL)
+		_, _ = fmt.Println(ui.Heading("Downloading"))
+		_, _ = fmt.Println(ui.Detail(downloadURL))
 	}
 	if err := dm.downloadHTTP(cachePath, app, downloadURL, proxy); err != nil {
 		return nil, fmt.Errorf("failed to download %s: %w", downloadURL, err)
@@ -354,7 +352,7 @@ func formatAria2Summary(raw string) []string {
 
 func printAria2Summary(raw string) {
 	for _, line := range formatAria2Summary(raw) {
-		_, _ = fmt.Fprintf(os.Stdout, "Download: %s\n", line)
+		_, _ = fmt.Println(ui.Detail(line))
 	}
 }
 
@@ -377,6 +375,10 @@ func (w *aria2OutputWriter) Write(p []byte) (int, error) {
 	defer w.mu.Unlock()
 
 	_, _ = w.raw.Write(p)
+
+	if !ui.IsTTY() {
+		return len(p), nil
+	}
 
 	w.pending += string(p)
 
@@ -411,7 +413,7 @@ func (w *aria2OutputWriter) Write(p []byte) (int, error) {
 			if w.width > len(rendered) {
 				padding = strings.Repeat(" ", w.width-len(rendered))
 			}
-			_, _ = fmt.Fprintf(os.Stdout, "\r%s%s", rendered, padding)
+			_, _ = fmt.Fprintf(os.Stderr, "\r%s%s", rendered, padding)
 			w.width = len(rendered)
 			w.shown = true
 		}
@@ -423,8 +425,8 @@ func (w *aria2OutputWriter) Write(p []byte) (int, error) {
 func (w *aria2OutputWriter) finishProgressLine() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.shown {
-		_, _ = fmt.Fprintln(os.Stdout)
+	if w.shown && ui.IsTTY() {
+		_, _ = fmt.Fprintln(os.Stderr)
 		w.shown = false
 	}
 }
@@ -553,15 +555,18 @@ func (pw *progressWriter) print() {
 		app = "download"
 	}
 
+	if !ui.IsTTY() {
+		return
+	}
+
 	if pw.total <= 0 {
-		// Unknown size: show the shared wait spinner with the byte counter.
 		frame := ui.SpinnerFrames[pw.prints%int64(len(ui.SpinnerFrames))]
 		msg := fmt.Sprintf("  %s downloading %s (%s)", ui.Cyan(frame), app, humanSize(pw.written))
 		padding := ""
 		if pw.width > len(msg) {
 			padding = strings.Repeat(" ", pw.width-len(msg))
 		}
-		fmt.Fprintf(os.Stderr, "\r%s%s", msg, padding)
+		_, _ = fmt.Fprintf(os.Stderr, "\r%s%s", msg, padding)
 		pw.width = len(msg)
 		return
 	}
@@ -584,14 +589,16 @@ func (pw *progressWriter) print() {
 	if pw.width > len(msg) {
 		padding = strings.Repeat(" ", pw.width-len(msg))
 	}
-	fmt.Fprintf(os.Stderr, "\r%s%s", msg, padding)
+	_, _ = fmt.Fprintf(os.Stderr, "\r%s%s", msg, padding)
 	pw.width = len(msg)
 }
 
 func (pw *progressWriter) finish() {
-	pw.written = pw.total
-	pw.print()
-	fmt.Fprintln(os.Stderr)
+	if ui.IsTTY() {
+		pw.written = pw.total
+		pw.print()
+		_, _ = fmt.Fprintln(os.Stderr)
+	}
 }
 
 func humanSize(b int64) string {
