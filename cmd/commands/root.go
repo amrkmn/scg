@@ -9,7 +9,7 @@ import (
 
 // NewRootCommand constructs the root cobra command and wires all subcommands.
 func NewRootCommand(version string) *cobra.Command {
-	var verbose bool
+	var verbose, noColor, quiet bool
 
 	root := &cobra.Command{
 		Use:   "scg",
@@ -25,10 +25,12 @@ It wraps the Scoop package manager with parallel operations and a clean interfac
 	root.SetHelpCommand(NewHelpCommand(root))
 
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
+	root.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable color output")
+	root.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppress non-essential output")
 
 	// Inject app context into cobra context on every command.
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		appCtx := app.NewContext(version, verbose)
+		appCtx := app.NewContext(version, verbose, noColor, quiet)
 		cmd.SetContext(cmdctx.Inject(cmd.Context(), appCtx))
 		return nil
 	}
@@ -40,6 +42,7 @@ It wraps the Scoop package manager with parallel operations and a clean interfac
 		NewPrefixCommand(),
 		NewWhichCommand(),
 		NewConfigCommand(),
+		NewCreateCommand(),
 		NewListCommand(),
 		NewSearchCommand(),
 		NewInfoCommand(),

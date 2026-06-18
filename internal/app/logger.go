@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"os"
 
 	"go.noz.one/scg/internal/ui"
@@ -23,62 +22,43 @@ type Logger interface {
 	Newline()
 }
 
-// ConsoleLogger implements Logger by writing to stdout/stderr with colour.
+// ConsoleLogger implements Logger by delegating to ui.Output.
 type ConsoleLogger struct {
-	verbose bool
+	out *ui.Output
 }
 
-// NewConsoleLogger creates a ConsoleLogger. When verbose is false, Verbose() is a no-op.
-func NewConsoleLogger(verbose bool) *ConsoleLogger {
-	return &ConsoleLogger{verbose: verbose}
-}
-
-func (l *ConsoleLogger) Log(msg string) {
-	_, _ = fmt.Fprintln(os.Stdout, ui.Detail(msg))
-}
-
-func (l *ConsoleLogger) Info(msg string) {
-	_, _ = fmt.Fprintln(os.Stdout, ui.NoteLine(msg))
-}
-
-func (l *ConsoleLogger) Success(msg string) {
-	_, _ = fmt.Fprintln(os.Stdout, ui.Done(msg, ""))
-}
-
-func (l *ConsoleLogger) Warn(msg string) {
-	_, _ = fmt.Fprintln(os.Stderr, ui.WarnLine(msg))
-}
-
-func (l *ConsoleLogger) Error(msg string) {
-	_, _ = fmt.Fprintln(os.Stderr, ui.FailLine(msg))
-}
-
-func (l *ConsoleLogger) Verbose(msg string) {
-	if l.verbose {
-		_, _ = fmt.Fprintln(os.Stdout, ui.Dim(msg))
+// NewConsoleLogger creates a ConsoleLogger that writes to os.Stdout/os.Stderr.
+func NewConsoleLogger(verbose, noColor, quiet bool) *ConsoleLogger {
+	var opts []ui.OutputOption
+	if verbose {
+		opts = append(opts, ui.WithVerbose())
 	}
+	if quiet {
+		opts = append(opts, ui.WithQuiet())
+	}
+	if noColor {
+		opts = append(opts, ui.WithNoColor())
+	}
+	return &ConsoleLogger{out: ui.NewOutput(os.Stdout, os.Stderr, opts...)}
 }
 
-func (l *ConsoleLogger) Header(msg string) {
-	_, _ = fmt.Fprintln(os.Stdout, ui.Heading(msg))
+// NewConsoleLoggerWithOutput creates a ConsoleLogger using the provided Output.
+func NewConsoleLoggerWithOutput(out *ui.Output) *ConsoleLogger {
+	return &ConsoleLogger{out: out}
 }
 
-func (l *ConsoleLogger) Detail(msg string) {
-	_, _ = fmt.Fprintln(os.Stdout, ui.Detail(msg))
-}
+// Output returns the underlying ui.Output.
+func (l *ConsoleLogger) Output() *ui.Output { return l.out }
 
-func (l *ConsoleLogger) Done(subject, detail string) {
-	_, _ = fmt.Fprintln(os.Stdout, ui.Done(subject, detail))
-}
-
-func (l *ConsoleLogger) Skip(subject, detail string) {
-	_, _ = fmt.Fprintln(os.Stdout, ui.Skip(subject, detail))
-}
-
-func (l *ConsoleLogger) Dry(subject, detail string) {
-	_, _ = fmt.Fprintln(os.Stdout, ui.Dry(subject, detail))
-}
-
-func (l *ConsoleLogger) Newline() {
-	_, _ = fmt.Fprintln(os.Stdout)
-}
+func (l *ConsoleLogger) Log(msg string)                 { l.out.WriteLog(msg) }
+func (l *ConsoleLogger) Info(msg string)                { l.out.WriteInfo(msg) }
+func (l *ConsoleLogger) Success(msg string)             { l.out.WriteSuccess(msg) }
+func (l *ConsoleLogger) Warn(msg string)                { l.out.WriteWarn(msg) }
+func (l *ConsoleLogger) Error(msg string)               { l.out.WriteError(msg) }
+func (l *ConsoleLogger) Verbose(msg string)             { l.out.WriteVerbose(msg) }
+func (l *ConsoleLogger) Header(msg string)              { l.out.WriteHeading(msg) }
+func (l *ConsoleLogger) Detail(msg string)              { l.out.WriteDetail(msg) }
+func (l *ConsoleLogger) Done(subject, detail string)    { l.out.WriteDone(subject, detail) }
+func (l *ConsoleLogger) Skip(subject, detail string)    { l.out.WriteSkip(subject, detail) }
+func (l *ConsoleLogger) Dry(subject, detail string)     { l.out.WriteDry(subject, detail) }
+func (l *ConsoleLogger) Newline()                       { l.out.WriteNewline() }

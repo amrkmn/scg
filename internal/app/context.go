@@ -28,12 +28,12 @@ type Services struct {
 }
 
 // NewContext constructs a fully wired Context with all services initialised.
-func NewContext(version string, verbose bool) *Context {
+func NewContext(version string, verbose, noColor, quiet bool) *Context {
 	ctx := &Context{
 		Version: version,
 		Verbose: verbose,
 	}
-	ctx.logger = NewConsoleLogger(verbose)
+	ctx.logger = NewConsoleLogger(verbose, noColor, quiet)
 	ctx.Services = &Services{
 		Apps:        service.NewAppsService(ctx),
 		Buckets:     service.NewBucketService(ctx),
