@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -116,11 +117,18 @@ func (s *AppsService) ListInstalled(filter string) ([]InstalledApp, error) {
 		return all, nil
 	}
 
-	// Apply filter.
+	// Apply filter with regex support (Scoop-compatible). Falls back to substring match
+	// if the filter string is not a valid regex.
 	var filtered []InstalledApp
+	var re *regexp.Regexp
+	if compiled, compileErr := regexp.Compile(filter); compileErr == nil {
+		re = compiled
+	}
 	lf := strings.ToLower(filter)
 	for _, a := range all {
-		if utils.ContainsFoldFast(a.Name, lf) {
+		if re != nil && re.MatchString(a.Name) {
+			filtered = append(filtered, a)
+		} else if re == nil && utils.ContainsFoldFast(a.Name, lf) {
 			filtered = append(filtered, a)
 		}
 	}

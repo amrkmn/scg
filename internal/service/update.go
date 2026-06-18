@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -69,12 +70,7 @@ func (s *UpdateService) Update(apps []string, opts UpdateOptions) []AppUpdateRes
 			s.ctx.GetLogger().Error(fmt.Sprintf("Failed to list installed apps: %v", err))
 			return nil
 		}
-		for _, app := range installed {
-			if opts.Scope == scoop.ScopeGlobal && app.Scope != scoop.ScopeGlobal {
-				continue
-			}
-			targets = append(targets, app)
-		}
+		targets = bulkUpdateTargetsForScope(installed, opts.Scope)
 	} else {
 		for _, name := range apps {
 			found := false
@@ -117,27 +113,70 @@ func (s *UpdateService) Update(apps []string, opts UpdateOptions) []AppUpdateRes
 		return nil
 	}
 
+	// Refresh buckets before status check when running --all, matching Scoop behavior.
+	if opts.All && !opts.Quiet {
+		s.ctx.GetLogger().Header("Updating buckets")
+	}
+	bucketNames := make([]string, 0, len(buckets))
+	for _, b := range buckets {
+		bucketNames = append(bucketNames, b.Name)
+	}
+	if len(bucketNames) > 0 {
+		var bucketScope scoop.InstallScope
+		if opts.Scope == scoop.ScopeGlobal {
+			bucketScope = scoop.ScopeGlobal
+		} else {
+			bucketScope = ""
+		}
+
+		onBucketStart := func(name string) {
+			if !opts.Quiet {
+				s.ctx.GetLogger().Log(fmt.Sprintf("  %s ...", name))
+			}
+		}
+		onBucketComplete := func(result UpdateResult) {
+			if !opts.Quiet {
+				switch result.Status {
+				case "updated":
+					s.ctx.GetLogger().Done(result.Name, "updated")
+				case "up-to-date":
+					s.ctx.GetLogger().Skip(result.Name, "up-to-date")
+				case "failed":
+					s.ctx.GetLogger().Error(fmt.Sprintf("%s: %v", result.Name, result.Error))
+				}
+			}
+		}
+		_ = bucketsSvc.UpdateBuckets(context.Background(), bucketNames, bucketScope, false, onBucketStart, onBucketComplete)
+		// Re-list buckets after update to pick up refreshed manifests.
+		buckets, err = bucketsSvc.List("")
+		if err != nil {
+			s.ctx.GetLogger().Error(fmt.Sprintf("Failed to list buckets after update: %v", err))
+			return nil
+		}
+	}
+
+	// Invalidate the apps cache so we pick up fresh data after bucket refresh.
+	s.apps.InvalidateCache()
+
 	bucketInfos := make([]BucketInfo, 0, len(buckets))
 	bucketInfos = append(bucketInfos, buckets...)
 
 	// Check status to find apps needing attention.
+	// Only outdated apps (or forced) are update candidates.
+	// Failed installs and missing deps are not treated as update candidates
+	// in the bulk update flow, matching Scoop behavior.
 	statusResults := s.status.CheckStatus(targets, bucketInfos, nil)
-	needsAttention := make(map[string]AppStatusResult)
-	for _, sr := range statusResults {
-		if sr.Outdated || sr.Failed || len(sr.MissingDeps) > 0 || opts.Force {
-			needsAttention[appKey(sr.Name, sr.Scope)] = sr
-		}
-	}
+	needsAttention := updateNeedsAttentionMap(statusResults, opts.Force)
 
 	// When --all, only process apps needing attention.
 	if opts.All {
-		var filtered []InstalledApp
-		for _, app := range targets {
-			if _, ok := needsAttention[appKey(app.Name, app.Scope)]; ok {
-				filtered = append(filtered, app)
+		var held []AppStatusResult
+		targets, held = filterBulkUpdateCandidates(targets, needsAttention)
+		if !opts.Quiet {
+			for _, sr := range held {
+				s.ctx.GetLogger().Warn(fmt.Sprintf("'%s' is held to version %s", sr.Name, sr.Installed))
 			}
 		}
-		targets = filtered
 	}
 
 	// Print update plan before mutating installed apps.
@@ -182,14 +221,6 @@ func (s *UpdateService) updateSingle(app InstalledApp, status AppStatusResult, o
 		result.Skipped = true
 		if !opts.Quiet {
 			s.ctx.GetLogger().Skip(app.Name, "up-to-date")
-		}
-		return result
-	}
-
-	if status.Failed {
-		result.Skipped = true
-		if !opts.Quiet {
-			s.ctx.GetLogger().Warn(fmt.Sprintf("%s has a failed status; skipping update", app.Name))
 		}
 		return result
 	}
@@ -338,4 +369,48 @@ func (s *UpdateService) updateSingle(app InstalledApp, status AppStatusResult, o
 
 func appKey(name string, scope scoop.InstallScope) string {
 	return name + "/" + string(scope)
+}
+
+func bulkUpdateTargetsForScope(installed []InstalledApp, scope scoop.InstallScope) []InstalledApp {
+	// Scoop-compatible scope behavior:
+	//   -a        => user/local apps only
+	//   -a -g     => global apps only
+	if scope == "" {
+		scope = scoop.ScopeUser
+	}
+
+	filtered := make([]InstalledApp, 0, len(installed))
+	for _, app := range installed {
+		if app.Scope == scope {
+			filtered = append(filtered, app)
+		}
+	}
+	return filtered
+}
+
+func updateNeedsAttentionMap(results []AppStatusResult, force bool) map[string]AppStatusResult {
+	needsAttention := make(map[string]AppStatusResult, len(results))
+	for _, sr := range results {
+		if sr.Outdated || force {
+			needsAttention[appKey(sr.Name, sr.Scope)] = sr
+		}
+	}
+	return needsAttention
+}
+
+func filterBulkUpdateCandidates(targets []InstalledApp, needsAttention map[string]AppStatusResult) ([]InstalledApp, []AppStatusResult) {
+	filtered := make([]InstalledApp, 0, len(targets))
+	held := make([]AppStatusResult, 0)
+	for _, app := range targets {
+		sr, needsWork := needsAttention[appKey(app.Name, app.Scope)]
+		if !needsWork {
+			continue
+		}
+		if sr.Held {
+			held = append(held, sr)
+			continue
+		}
+		filtered = append(filtered, app)
+	}
+	return filtered, held
 }
