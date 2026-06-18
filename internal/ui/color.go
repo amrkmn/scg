@@ -47,3 +47,8 @@ func Success(s string) string   { return Green(s) }
 func Warning(s string) string   { return Yellow(s) }
 func Info(s string) string      { return Blue(s) }
 func Highlight(s string) string { return Cyan(s) }
+
+// SetColorEnabled enables or disables ANSI color globally.
+func SetColorEnabled(enabled bool) {
+	color.NoColor = !enabled
+}

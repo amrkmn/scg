@@ -5,6 +5,22 @@ import (
 	"strings"
 )
 
+type StatusKind string
+
+const (
+	StatusRunning StatusKind = "running"
+	StatusDone    StatusKind = "done"
+	StatusSkip    StatusKind = "skip"
+	StatusWarn    StatusKind = "warn"
+	StatusFail    StatusKind = "fail"
+	StatusDry     StatusKind = "dry"
+	StatusNote    StatusKind = "note"
+)
+
+type StatusOptions struct {
+	ASCII bool
+}
+
 func Heading(title string) string {
 	return fmt.Sprintf("%s %s", BoldCyan("==>"), Bold(title))
 }
@@ -14,6 +30,10 @@ func Detail(text string) string {
 }
 
 func Status(kind, subject, detail string) string {
+	return StatusWithOptions(StatusKind(kind), subject, detail, StatusOptions{})
+}
+
+func StatusWithOptions(kind StatusKind, subject, detail string, opts StatusOptions) string {
 	parts := []string{}
 	if subject != "" {
 		parts = append(parts, subject)
@@ -21,7 +41,11 @@ func Status(kind, subject, detail string) string {
 	if detail != "" {
 		parts = append(parts, detail)
 	}
-	return Detail(colorStatus(kind, strings.Join(parts, " ")))
+	text := strings.Join(parts, " ")
+	if text == "" {
+		return Detail(colorStatusSymbol(kind, opts.ASCII))
+	}
+	return Detail(fmt.Sprintf("%s %s", colorStatusSymbol(kind, opts.ASCII), text))
 }
 
 func Done(subject, detail string) string { return Status("done", subject, detail) }
@@ -32,7 +56,7 @@ func FailLine(msg string) string         { return Status("fail", msg, "") }
 func NoteLine(msg string) string         { return Status("note", msg, "") }
 
 func VersionChange(name, oldVersion, newVersion string) string {
-	return fmt.Sprintf("%s %s -> %s", Cyan(name), oldVersion, newVersion)
+	return fmt.Sprintf("%s %s %s %s", BoldCyan(name), Dim(oldVersion), Dim("->"), Green(newVersion))
 }
 
 func JoinList(items []string) string {
@@ -48,19 +72,50 @@ func JoinList(items []string) string {
 	}
 }
 
-func colorStatus(kind, text string) string {
+func StatusSymbol(kind StatusKind, ascii bool) string {
 	switch kind {
-	case "done", "ok":
-		return Green(text)
-	case "warn":
-		return Yellow(text)
-	case "fail", "error":
-		return Red(text)
-	case "dry":
-		return Yellow(text)
-	case "skip", "note":
-		return Dim(text)
+	case StatusRunning:
+		if ascii {
+			return ">"
+		}
+		return "•"
+	case StatusDone:
+		if ascii {
+			return "+"
+		}
+		return "✓"
+	case StatusSkip:
+		return "-"
+	case StatusWarn:
+		return "!"
+	case StatusFail:
+		if ascii {
+			return "x"
+		}
+		return "✗"
+	case StatusDry:
+		return "~"
+	case StatusNote:
+		return "i"
 	default:
-		return Dim(text)
+		return "-"
+	}
+}
+
+func colorStatusSymbol(kind StatusKind, ascii bool) string {
+	symbol := StatusSymbol(kind, ascii)
+	switch kind {
+	case StatusDone:
+		return Green(symbol)
+	case StatusWarn, StatusDry:
+		return Yellow(symbol)
+	case StatusFail:
+		return Red(symbol)
+	case StatusSkip:
+		return Dim(symbol)
+	case StatusNote, StatusRunning:
+		return Cyan(symbol)
+	default:
+		return symbol
 	}
 }

@@ -10,6 +10,11 @@ import (
 	"golang.org/x/term"
 )
 
+// IsTTY returns true if stdout is connected to a terminal.
+func IsTTY() bool {
+	return term.IsTerminal(int(os.Stdout.Fd()))
+}
+
 // clearLine clears the current terminal line and returns the cursor to column 0.
 const clearLine = "\r\x1b[2K"
 
