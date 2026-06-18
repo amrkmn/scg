@@ -126,12 +126,10 @@ function movedir($from, $to) {
     $proc = New-Object System.Diagnostics.Process
     $proc.StartInfo.FileName = 'robocopy.exe'
     $proc.StartInfo.Arguments = "`"$from`" `"$to`" /e /move"
-    $proc.StartInfo.RedirectStandardOutput = $true
     $proc.StartInfo.RedirectStandardError = $true
     $proc.StartInfo.UseShellExecute = $false
     $proc.StartInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
     [void]$proc.Start()
-    $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
     $proc.WaitForExit()
     if ($proc.ExitCode -ge 8) {
         throw "Could not move '$from' to '$to'! (error $($proc.ExitCode))"
@@ -149,7 +147,7 @@ function is_admin {
 }
 
 function abort($msg, [int]$exit_code=1) { Write-Host $msg -ForegroundColor Red; exit $exit_code }
-function error($msg) { Write-Host "ERROR $msg" -ForegroundColor DarkRed }
+function error_msg($msg) { Write-Host "ERROR $msg" -ForegroundColor DarkRed }
 function warn($msg) { Write-Host "WARN  $msg" -ForegroundColor DarkYellow }
 function info($msg) { Write-Host "INFO  $msg" -ForegroundColor DarkGray }
 function success($msg) { Write-Host $msg -ForegroundColor DarkGreen }
@@ -218,7 +216,7 @@ function Invoke-ExternalCommand {
         if ($Activity) {
             Write-Host 'error.' -ForegroundColor DarkRed
         }
-        error $_.Exception.Message
+        error_msg $_.Exception.Message
         return $false
     }
 
@@ -257,7 +255,7 @@ function Invoke-ExternalCommand {
         if ($Activity) {
             Write-Host 'error.' -ForegroundColor DarkRed
         }
-        error "Exit code was $($proc.ExitCode)!"
+        error_msg "Exit code was $($proc.ExitCode)!"
         return $false
     }
 
