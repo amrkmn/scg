@@ -30,14 +30,14 @@ func NewUnholdCommand() *cobra.Command {
 			for _, a := range args {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Heading(formatHoldHeading("Unholding", a, scope)))
 				r := unholdOne(ctx, a, scope)
-				switch {
-				case r == 0:
-					unheld++
-				case r == 1:
-					skipped++
-				default:
-					failed++
-				}
+			switch r {
+			case 0:
+				unheld++
+			case 1:
+				skipped++
+			default:
+				failed++
+			}
 			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderStatusSummary(ui.StatusDone, "unhold", fmt.Sprintf("%d unheld, %d skipped, %d failed", unheld, skipped, failed)))
 

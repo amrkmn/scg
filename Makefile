@@ -1,6 +1,11 @@
 # Variables
 VERSION ?= v0.1.0
 
+.PHONY: build build-amd64 build-386 build-arm64 build-all
+.PHONY: build-shim build-shim-amd64 build-shim-386 build-shim-arm64
+.PHONY: install test bench clean lint fmt check run
+.PHONY: ci-test ci-lint checksums release draft-release delete-tag tags
+
 # Build targets
 build: build-shim
 	go build -ldflags "-X main.Version=$(VERSION) -s -w" -o dist/scg.exe ./cmd
@@ -61,16 +66,16 @@ check: fmt lint test
 run:
 	go run ./cmd $(ARGS)
 
-# lint-print reports direct os.Stdout/os.Stderr writes and bare fmt.Print*
-# calls in command files that are not documented raw-output exceptions.
-lint-print:
-	@echo "=== Direct stdout/stderr writes in command files (informational) ==="
-	@rg -n "os\.(Stdout|Stderr)" cmd/commands/ -g '*.go' -g '!_test.go' --no-heading || true
-	@echo ""
-	@echo "=== Bare fmt.Print* calls in command files (informational) ==="
-	@rg -n "fmt\.(Fprint[fln]?|Print[fln]?)\s*\(" cmd/commands/ -g '*.go' -g '!_test.go' --no-heading || true
-	@echo ""
-	@echo "See .plans/logging-output-overhaul-plan.md for documented exceptions."
+# CI targets
+ci-test: build-shim build test
+	go run ./cmd version
+
+ci-lint: build-shim
+	golangci-lint run --timeout=5m
+
+checksums: build-all
+	cd dist && sha256sum *.exe > sha256sums.txt
+	@echo Checksums written to dist/sha256sums.txt
 
 # CI: release helpers
 tags:
@@ -81,10 +86,10 @@ release:
 	go test ./...
 	git tag -a "$(VERSION)" -m "chore: release $(VERSION)"
 	git push origin "$(VERSION)"
-	@echo Release $(VERSION) created!
+	@echo Release $(VERSION) tag pushed! CI will build and attach artifacts.
 
-draft-release:
-	gh release create "$(VERSION)" --draft --title "Release $(VERSION)" --notes "$(BODY)"
+draft-release: build-all checksums
+	gh release create "$(VERSION)" --draft --title "Release $(VERSION)" --notes "$(BODY)" dist/scg-*.exe dist/sha256sums.txt
 
 delete-tag:
 	git tag -d "$(VERSION)"

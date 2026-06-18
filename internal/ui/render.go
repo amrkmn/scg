@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -59,7 +58,9 @@ func RenderKeyValueBlock(title string, pairs []KeyValue) string {
 			sb.WriteByte('\n')
 		}
 		key := PadRight(BoldCyan(pair.Key), maxKeyWidth)
-		sb.WriteString(fmt.Sprintf("%s : %s", key, pair.Value))
+		sb.WriteString(key)
+		sb.WriteString(" : ")
+		sb.WriteString(pair.Value)
 	}
 	return sb.String()
 }

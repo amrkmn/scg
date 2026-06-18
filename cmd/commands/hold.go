@@ -30,14 +30,14 @@ func NewHoldCommand() *cobra.Command {
 			for _, app := range args {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Heading(formatHoldHeading("Holding", app, scope)))
 				r := holdOne(ctx, app, scope)
-				switch {
-				case r == 0:
-					held++
-				case r == 1:
-					skipped++
-				default:
-					failed++
-				}
+			switch r {
+			case 0:
+				held++
+			case 1:
+				skipped++
+			default:
+				failed++
+			}
 			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderStatusSummary(ui.StatusDone, "hold", fmt.Sprintf("%d held, %d skipped, %d failed", held, skipped, failed)))
 

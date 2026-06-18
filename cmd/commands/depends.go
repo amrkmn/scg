@@ -46,7 +46,7 @@ func NewDependsCommand() *cobra.Command {
 				rows = append(rows, []string{ui.BoldCyan(value)})
 			}
 
-			fmt.Fprintln(cmd.OutOrStdout(), ui.RenderTable([]string{"Dependency"}, rows, []float64{1.0}, fmt.Sprintf("%d dependenc%s", len(deps), pluralizeDepends(len(deps)))))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderTable([]string{"Dependency"}, rows, []float64{1.0}, fmt.Sprintf("%d dependenc%s", len(deps), pluralizeDepends(len(deps)))))
 			return nil
 		},
 	}

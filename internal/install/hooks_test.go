@@ -316,7 +316,7 @@ func TestExpandZipArchive(t *testing.T) {
 		t.Fatalf("failed to create nested test zip: %v", err)
 	}
 
-	os.RemoveAll(extractDir)
+	_ = os.RemoveAll(extractDir)
 	script2 := "Expand-ZipArchive -Path '" + zipPath2 + "' -DestinationPath '" + extractDir + "' -ExtractDir 'sub'"
 	_, _, err = runPowerShellHookScript(t, nil, script2)
 	if err != nil {
@@ -366,24 +366,24 @@ func TestArchiveHelperFileNotFound(t *testing.T) {
 	// and throws the expected failure message.
 
 	tests := []struct {
-		name   string
-		call   string
-		errMsg string
+		name    string
+		call    string
+		errMsgs []string
 	}{
 		{
-			name:   "Expand-7zipArchive file not found",
-			call:   "Expand-7zipArchive -Path 'missing.7z' -DestinationPath '.'",
-			errMsg: "Failed to extract files from missing.7z",
+			name:    "Expand-7zipArchive file not found",
+			call:    "Expand-7zipArchive -Path 'missing.7z' -DestinationPath '.'",
+			errMsgs: []string{"Failed to extract files from missing.7z", "7-Zip is required"},
 		},
 		{
-			name:   "Expand-InnoArchive file not found",
-			call:   "Expand-InnoArchive -Path 'missing.exe' -DestinationPath '.'",
-			errMsg: "Failed to extract files from missing.exe",
+			name:    "Expand-InnoArchive file not found",
+			call:    "Expand-InnoArchive -Path 'missing.exe' -DestinationPath '.'",
+			errMsgs: []string{"Failed to extract files from missing.exe", "Inno Setup Unpacker is required"},
 		},
 		{
-			name:   "Expand-DarkArchive file not found",
-			call:   "Expand-DarkArchive -Path 'missing.msi' -DestinationPath '.'",
-			errMsg: "Failed to extract files from missing.msi",
+			name:    "Expand-DarkArchive file not found",
+			call:    "Expand-DarkArchive -Path 'missing.msi' -DestinationPath '.'",
+			errMsgs: []string{"Failed to extract files from missing.msi", "WiX Toolset (dark) is required"},
 		},
 	}
 
@@ -394,8 +394,15 @@ func TestArchiveHelperFileNotFound(t *testing.T) {
 				t.Fatalf("expected error for missing file, got nil\nstdout:\n%s\nstderr:\n%s", stdout, stderr)
 			}
 			combined := stdout + "\n" + stderr
-			if !strings.Contains(combined, tt.errMsg) {
-				t.Fatalf("expected error message containing %q\nerr=%v\nstdout:\n%s\nstderr:\n%s", tt.errMsg, err, stdout, stderr)
+			matched := false
+			for _, msg := range tt.errMsgs {
+				if strings.Contains(combined, msg) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				t.Fatalf("expected error message containing one of %v\nerr=%v\nstdout:\n%s\nstderr:\n%s", tt.errMsgs, err, stdout, stderr)
 			}
 		})
 	}

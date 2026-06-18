@@ -149,7 +149,7 @@ func newAliasListCommand() *cobra.Command {
 				headers = []string{"Name", "Command", "Summary"}
 				weights = []float64{0.2, 0.55, 0.25}
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), ui.RenderTable(headers, rows, weights, fmt.Sprintf("%d alias(es)", len(rows))))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderTable(headers, rows, weights, fmt.Sprintf("%d alias(es)", len(rows))))
 			return nil
 		},
 	}

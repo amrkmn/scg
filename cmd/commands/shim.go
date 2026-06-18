@@ -317,7 +317,7 @@ func newShimListCmd() *cobra.Command {
 				rows = append(rows, []string{ui.BoldCyan(s.Name), source, s.Path + scopeTag})
 			}
 
-			fmt.Fprintln(cmd.OutOrStdout(), ui.RenderTable([]string{"Name", "Source", "Path"}, rows, []float64{0.25, 0.2, 0.55}, fmt.Sprintf("%d shim(s)", len(shims))))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderTable([]string{"Name", "Source", "Path"}, rows, []float64{0.25, 0.2, 0.55}, fmt.Sprintf("%d shim(s)", len(shims))))
 			return nil
 		},
 	}
