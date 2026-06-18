@@ -389,7 +389,7 @@ func newShimInfoCmd() *cobra.Command {
 
 			source := appFromPath(targetPath)
 
-			fmt.Fprintln(cmd.OutOrStdout(), ui.RenderKeyValueBlock("Shim "+name, buildShimInfoPairs(name, targetPath, args2, source, scopeLabel, exePath, findAlternatives(name, paths.Shims, source))))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.RenderKeyValueBlock("Shim "+name, buildShimInfoPairs(name, targetPath, args2, source, scopeLabel, exePath, findAlternatives(name, paths.Shims, source))))
 
 			return nil
 		},
