@@ -8,7 +8,12 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+
+	_ "embed"
 )
+
+//go:embed helpers.ps1
+var scoopHelpersEmbed string
 
 // RunHook executes a PowerShell pre_install or post_install script.
 // It tries pwsh.exe first, falling back to powershell.exe.
@@ -184,28 +189,36 @@ func escapePS(s string) string {
 }
 
 func buildHookPrelude(envVars map[string]string) string {
-	if len(envVars) == 0 {
-		return ""
+	var parts []string
+
+	// Inject Scoop-compatible helper functions first.
+	parts = append(parts, scoopHelpersEmbed)
+
+	// Then inject variables.
+	if len(envVars) > 0 {
+		keys := make([]string, 0, len(envVars))
+		for k := range envVars {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		lines := make([]string, 0, len(keys)*2)
+		for _, k := range keys {
+			v := escapePS(envVars[k])
+			lines = append(lines, fmt.Sprintf("$env:%s = '%s'", k, v))
+			// Scoop hooks rely on regular PowerShell variables like $dir, not only $env:dir.
+			lines = append(lines, fmt.Sprintf("Set-Variable -Name '%s' -Value '%s'", escapePS(k), v))
+		}
+		parts = append(parts, strings.Join(lines, "\n"))
 	}
 
-	keys := make([]string, 0, len(envVars))
-	for k := range envVars {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	lines := make([]string, 0, len(keys)*2)
-	for _, k := range keys {
-		v := escapePS(envVars[k])
-		lines = append(lines, fmt.Sprintf("$env:%s = '%s'", k, v))
-		// Scoop hooks rely on regular PowerShell variables like $dir, not only $env:dir.
-		lines = append(lines, fmt.Sprintf("Set-Variable -Name '%s' -Value '%s'", escapePS(k), v))
-	}
-	return strings.Join(lines, "\n")
+	return strings.Join(parts, "\n")
 }
 
 // SetupHookEnvVars creates the standard environment variables for install hooks.
 // This matches Scoop's variable set for pre_install/post_install scripts.
+// $global is always set: to "true" for global scope, and "" (empty) for user scope,
+// matching Scoop's behavior where $global is always defined in hook context.
 func SetupHookEnvVars(dir, originalDir, version, architecture, appName, persistDir, scoopDir, downloadFile string, isGlobal bool) map[string]string {
 	env := map[string]string{
 		// Core variables
@@ -227,6 +240,8 @@ func SetupHookEnvVars(dir, originalDir, version, architecture, appName, persistD
 	}
 	if isGlobal {
 		env["global"] = "true"
+	} else {
+		env["global"] = ""
 	}
 	return env
 }
