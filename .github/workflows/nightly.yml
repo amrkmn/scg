@@ -48,7 +48,7 @@ jobs:
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
           DATE=$(date +%Y.%m.%d)
-          VERSION="${DATE}-${SHORT_SHA}"
+          VERSION="v0.0.0-nightly.${DATE}.${SHORT_SHA}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building nightly version: $VERSION"
 
