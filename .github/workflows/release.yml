@@ -70,7 +70,7 @@ jobs:
           make test
 
       - name: Generate artifact attestation
-        uses: actions/attest@5ec407fab24e59f5df8672d92186d8c266c9b7fe # v4.1.0
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           subject-path: dist/scg-${{ matrix.arch }}.exe
           show-summary: true
