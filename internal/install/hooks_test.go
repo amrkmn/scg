@@ -66,7 +66,7 @@ func TestBuildHookPrelude_InjectsHelpersAndVariables(t *testing.T) {
 		"function Find-BucketDirectory",
 		"function bucketdir",
 		"function Invoke-ExternalCommand",
-		"function error",
+		"function error_msg",
 		"function abort",
 		"function warn",
 		"function info",
@@ -126,7 +126,7 @@ func TestFindBucketDirectoryAndBucketdirAlias(t *testing.T) {
 
 func TestMessageHelpers(t *testing.T) {
 	stdout, stderr, err := runPowerShellHookScript(t, nil, strings.Join([]string{
-		"error 'bad'",
+		"error_msg 'bad'",
 		"warn 'careful'",
 		"info 'heads up'",
 		"success 'done'",

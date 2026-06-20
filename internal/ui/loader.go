@@ -341,22 +341,22 @@ func (sl *StatusLines) Stop() {
 	}
 	if sl.tty {
 		for range sl.lines {
-			fmt.Fprintf(os.Stdout, "\r\x1b[2K\x1b[A")
+			_, _ = fmt.Fprintf(os.Stdout, "\r\x1b[2K\x1b[A")
 		}
-		fmt.Fprint(os.Stdout, "\r\x1b[2K")
+		_, _ = fmt.Fprint(os.Stdout, "\r\x1b[2K")
 	}
 }
 
 func (sl *StatusLines) print() {
 	for i := range sl.lines {
-		fmt.Fprintln(os.Stdout, sl.formatLine(i))
+		_, _ = fmt.Fprintln(os.Stdout, sl.formatLine(i))
 	}
 }
 
 func (sl *StatusLines) reprint() {
-	fmt.Fprintf(os.Stdout, "\x1b[%dA", len(sl.lines))
+	_, _ = fmt.Fprintf(os.Stdout, "\x1b[%dA", len(sl.lines))
 	for i := range sl.lines {
-		fmt.Fprintf(os.Stdout, "\r\x1b[2K%s\n", sl.formatLine(i))
+		_, _ = fmt.Fprintf(os.Stdout, "\r\x1b[2K%s\n", sl.formatLine(i))
 	}
 }
 
