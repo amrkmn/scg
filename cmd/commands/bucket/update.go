@@ -48,26 +48,36 @@ func NewUpdateCommand() *cobra.Command {
 
 			_, _ = fmt.Println(ui.Heading(fmt.Sprintf("Updating %d bucket(s)", len(names))))
 
-			results := ctx.Services.Buckets.UpdateBuckets(cmd.Context(), names, scope, changelog, nil, nil)
+			sl := ui.NewStatusLines(names)
+			sl.Start()
 
+			onComplete := func(result service.UpdateResult) {
+				sl.SetStatus(result.Name, result.Status, result.Error)
+			}
+
+			results := ctx.Services.Buckets.UpdateBuckets(cmd.Context(), names, scope, changelog, nil, onComplete)
+			sl.Stop()
+
+			nameWidth := sl.NameWidth()
 			updated := 0
 			upToDate := 0
 			failed := 0
 			for _, r := range results {
+				name := ui.PadRight(r.Name, nameWidth)
 				switch r.Status {
 				case "updated":
 					updated++
-					_, _ = fmt.Println(ui.Done(r.Name, "updated"))
+					_, _ = fmt.Println(ui.Done(name, r.Status))
 				case "up-to-date":
 					upToDate++
-					_, _ = fmt.Println(ui.Skip(r.Name, "up-to-date"))
+					_, _ = fmt.Println(ui.Skip(name, ui.Dim(r.Status)))
 				case "failed":
 					failed++
 					msg := "failed"
 					if r.Error != nil {
 						msg = fmt.Sprintf("failed: %v", r.Error)
 					}
-					_, _ = fmt.Fprintln(os.Stderr, ui.FailLine(r.Name+": "+msg))
+					_, _ = fmt.Fprintln(os.Stderr, ui.FailLine(name+" "+msg))
 				}
 			}
 
@@ -76,7 +86,6 @@ func NewUpdateCommand() *cobra.Command {
 			if failed > 0 {
 				detail = fmt.Sprintf("%d updated, %d up-to-date, %d failed", updated, upToDate, failed)
 			}
-			_, _ = fmt.Println()
 			_, _ = fmt.Println(ui.RenderStatusSummary(kind, "bucket", detail))
 
 			if changelog && updated > 0 {

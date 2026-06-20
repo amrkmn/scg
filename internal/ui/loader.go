@@ -252,3 +252,173 @@ func (p *ProgressBar) renderWidth(current, total int, msg, step string) int {
 	}
 	return barW
 }
+
+type statusLine struct {
+	name   string
+	status string
+	err    error
+}
+
+// StatusLines renders a set of named items with animated status updates.
+// It prints one line per item and, on a terminal, reprints in-place with spinner frames.
+// Thread-safe for concurrent updates via SetStatus.
+type StatusLines struct {
+	lines     []statusLine
+	index     map[string]int
+	mu        sync.Mutex
+	frame     int
+	ticker    *time.Ticker
+	done      chan struct{}
+	started   bool
+	stopped   bool
+	tty       bool
+	nameWidth int
+}
+
+// NewStatusLines creates a StatusLines for the given item names. All items
+// start in "updating" state.
+func NewStatusLines(names []string) *StatusLines {
+	nameW := 0
+	for _, n := range names {
+		if len(n) > nameW {
+			nameW = len(n)
+		}
+	}
+	lines := make([]statusLine, len(names))
+	index := make(map[string]int, len(names))
+	for i, name := range names {
+		lines[i] = statusLine{name: name, status: "updating"}
+		index[name] = i
+	}
+	return &StatusLines{lines: lines, index: index, nameWidth: nameW, tty: IsTTY()}
+}
+
+// Start prints the initial state and, on a terminal, starts the spinner ticker.
+func (sl *StatusLines) Start() {
+	sl.mu.Lock()
+	defer sl.mu.Unlock()
+	if sl.started {
+		return
+	}
+	sl.started = true
+	if sl.tty {
+		sl.print()
+		sl.startTicker()
+	}
+}
+
+// SetStatus updates the status of a named item. On a terminal it triggers
+// a reprint of all lines. On non-TTY, it only updates internal state so the
+// caller can produce final output after Stop().
+func (sl *StatusLines) SetStatus(name, status string, err error) {
+	sl.mu.Lock()
+	defer sl.mu.Unlock()
+	idx, ok := sl.index[name]
+	if !ok {
+		return
+	}
+	sl.lines[idx].status = status
+	sl.lines[idx].err = err
+	if sl.tty {
+		sl.reprint()
+	}
+}
+
+// Stop halts the spinner ticker, clears the animated lines, and leaves the
+// terminal ready for subsequent output.
+func (sl *StatusLines) Stop() {
+	sl.mu.Lock()
+	defer sl.mu.Unlock()
+	if sl.stopped {
+		return
+	}
+	sl.stopped = true
+	if sl.ticker != nil {
+		sl.ticker.Stop()
+	}
+	if sl.done != nil {
+		close(sl.done)
+	}
+	if sl.tty {
+		for range sl.lines {
+			fmt.Fprintf(os.Stdout, "\r\x1b[2K\x1b[A")
+		}
+		fmt.Fprint(os.Stdout, "\r\x1b[2K")
+	}
+}
+
+func (sl *StatusLines) print() {
+	for i := range sl.lines {
+		fmt.Fprintln(os.Stdout, sl.formatLine(i))
+	}
+}
+
+func (sl *StatusLines) reprint() {
+	fmt.Fprintf(os.Stdout, "\x1b[%dA", len(sl.lines))
+	for i := range sl.lines {
+		fmt.Fprintf(os.Stdout, "\r\x1b[2K%s\n", sl.formatLine(i))
+	}
+}
+
+// NameWidth returns the maximum name width used for padding when formatting lines.
+func (sl *StatusLines) NameWidth() int {
+	return sl.nameWidth
+}
+
+func (sl *StatusLines) formatLine(idx int) string {
+	s := sl.lines[idx]
+	name := PadRight(s.name, sl.nameWidth)
+	var spinner string
+	if sl.tty {
+		spinner = SpinnerFrames[sl.frame%len(SpinnerFrames)]
+	} else {
+		spinner = " "
+	}
+	switch s.status {
+	case "updating":
+		return Detail(fmt.Sprintf("%s %s %s", Cyan(spinner), Bold(name), Cyan("updating")))
+	case "updated":
+		return Detail(fmt.Sprintf("  %s %s", Bold(name), Green("updated")))
+	case "up-to-date":
+		return Detail(Dim(fmt.Sprintf("  %s up-to-date", name)))
+	case "failed":
+		msg := "failed"
+		if s.err != nil {
+			msg = fmt.Sprintf("failed: %v", s.err)
+		}
+		return Detail(fmt.Sprintf("  %s %s", Bold(name), Red(msg)))
+	default:
+		return Detail(Dim("  " + name))
+	}
+}
+
+func (sl *StatusLines) startTicker() {
+	sl.done = make(chan struct{})
+	sl.ticker = time.NewTicker(SpinnerInterval)
+	go func() {
+		for {
+			select {
+			case <-sl.done:
+				return
+			case <-sl.ticker.C:
+				sl.mu.Lock()
+				if sl.stopped {
+					sl.mu.Unlock()
+					return
+				}
+				anyUpdating := false
+				for _, s := range sl.lines {
+					if s.status == "updating" {
+						anyUpdating = true
+						break
+					}
+				}
+				if anyUpdating {
+					sl.frame++
+					sl.reprint()
+				}
+				sl.mu.Unlock()
+			}
+		}
+	}()
+}

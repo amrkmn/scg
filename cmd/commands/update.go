@@ -15,7 +15,7 @@ import (
 func NewUpdateCommand() *cobra.Command {
 	var (
 		flagGlobal, flagIndependent, flagNoCache, flagSkipHash, flagForce, flagAll, flagDryRun, flagQuiet bool
-		flagArch, flagProxy                                                                           string
+		flagArch, flagProxy                                                                               string
 	)
 
 	cmd := &cobra.Command{

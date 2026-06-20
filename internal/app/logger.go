@@ -50,15 +50,15 @@ func NewConsoleLoggerWithOutput(out *ui.Output) *ConsoleLogger {
 // Output returns the underlying ui.Output.
 func (l *ConsoleLogger) Output() *ui.Output { return l.out }
 
-func (l *ConsoleLogger) Log(msg string)                 { l.out.WriteLog(msg) }
-func (l *ConsoleLogger) Info(msg string)                { l.out.WriteInfo(msg) }
-func (l *ConsoleLogger) Success(msg string)             { l.out.WriteSuccess(msg) }
-func (l *ConsoleLogger) Warn(msg string)                { l.out.WriteWarn(msg) }
-func (l *ConsoleLogger) Error(msg string)               { l.out.WriteError(msg) }
-func (l *ConsoleLogger) Verbose(msg string)             { l.out.WriteVerbose(msg) }
-func (l *ConsoleLogger) Header(msg string)              { l.out.WriteHeading(msg) }
-func (l *ConsoleLogger) Detail(msg string)              { l.out.WriteDetail(msg) }
-func (l *ConsoleLogger) Done(subject, detail string)    { l.out.WriteDone(subject, detail) }
-func (l *ConsoleLogger) Skip(subject, detail string)    { l.out.WriteSkip(subject, detail) }
-func (l *ConsoleLogger) Dry(subject, detail string)     { l.out.WriteDry(subject, detail) }
-func (l *ConsoleLogger) Newline()                       { l.out.WriteNewline() }
+func (l *ConsoleLogger) Log(msg string)              { l.out.WriteLog(msg) }
+func (l *ConsoleLogger) Info(msg string)             { l.out.WriteInfo(msg) }
+func (l *ConsoleLogger) Success(msg string)          { l.out.WriteSuccess(msg) }
+func (l *ConsoleLogger) Warn(msg string)             { l.out.WriteWarn(msg) }
+func (l *ConsoleLogger) Error(msg string)            { l.out.WriteError(msg) }
+func (l *ConsoleLogger) Verbose(msg string)          { l.out.WriteVerbose(msg) }
+func (l *ConsoleLogger) Header(msg string)           { l.out.WriteHeading(msg) }
+func (l *ConsoleLogger) Detail(msg string)           { l.out.WriteDetail(msg) }
+func (l *ConsoleLogger) Done(subject, detail string) { l.out.WriteDone(subject, detail) }
+func (l *ConsoleLogger) Skip(subject, detail string) { l.out.WriteSkip(subject, detail) }
+func (l *ConsoleLogger) Dry(subject, detail string)  { l.out.WriteDry(subject, detail) }
+func (l *ConsoleLogger) Newline()                    { l.out.WriteNewline() }
