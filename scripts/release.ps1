@@ -95,10 +95,6 @@ go test ./...
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
 Write-Host ''
 
-Write-Host 'Building all architectures...'
-& "$PSScriptRoot\build.ps1" -All -Version $next
-Write-Host ''
-
 Write-Host "Committing: chore: release $next"
 git add -A
 git commit -m "chore: release $next"
@@ -120,16 +116,7 @@ try {
     throw "Push failed -- rolled back. $($_.Exception.Message)"
 }
 
-try {
-    Write-Host "Creating GitHub release $next..."
-    & gh release create $next --title $next --generate-notes --verify-tag
-} catch {
-    Write-Host "GitHub release creation failed, but code was pushed successfully."
-    Write-Host "Create manually: https://github.com/amrkmn/scg/releases/new?tag=$next"
-}
-
 Write-Host ''
-Write-Host "Successfully released $next!"
+Write-Host "Successfully pushed $next!"
+Write-Host 'CI will build and create the release.'
 Write-Host ''
-Write-Host "Release: https://github.com/amrkmn/scg/releases/tag/$next"
-Write-Host "Compare: https://github.com/amrkmn/scg/compare/$current...$next"
