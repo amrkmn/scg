@@ -105,6 +105,10 @@ func Clone(url, dest string, opts CloneOptions) error {
 			opts.OnProgress(current, total)
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		_ = cmd.Wait()
+		return fmt.Errorf("git clone stderr scan: %w", err)
+	}
 
 	return cmd.Wait()
 }
