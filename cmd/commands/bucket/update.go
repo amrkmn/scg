@@ -67,7 +67,7 @@ func NewUpdateCommand() *cobra.Command {
 				switch r.Status {
 				case "updated":
 					updated++
-					_, _ = fmt.Println(ui.Done(name, r.Status))
+					_, _ = fmt.Println(ui.Done(name, ui.Green(r.Status)))
 				case "up-to-date":
 					upToDate++
 					_, _ = fmt.Println(ui.Skip(name, ui.Dim(r.Status)))
@@ -77,7 +77,7 @@ func NewUpdateCommand() *cobra.Command {
 					if r.Error != nil {
 						msg = fmt.Sprintf("failed: %v", r.Error)
 					}
-					_, _ = fmt.Fprintln(os.Stderr, ui.FailLine(name+" "+msg))
+					_, _ = fmt.Fprintln(os.Stderr, ui.FailLine(name+" "+ui.Red(msg)))
 				}
 			}
 
