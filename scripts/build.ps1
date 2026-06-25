@@ -18,7 +18,8 @@ if (-not $Version) {
             $sha = 'unknown'
         }
         $date = (Get-Date -Format 'yyyy.MM.dd')
-        $Version = "v0.0.0-dev.$date.$sha"
+        $time = (Get-Date -Format 'HHmmss')
+        $Version = "v0.0.0-dev.$date.$time.$sha"
     }
 }
 
