@@ -113,10 +113,6 @@ func (s *UpdateService) Update(apps []string, opts UpdateOptions) []AppUpdateRes
 		return nil
 	}
 
-	// Refresh buckets before status check when running --all, matching Scoop behavior.
-	if opts.All && !opts.Quiet {
-		s.ctx.GetLogger().Header("Updating buckets")
-	}
 	bucketNames := make([]string, 0, len(buckets))
 	for _, b := range buckets {
 		bucketNames = append(bucketNames, b.Name)
@@ -129,24 +125,52 @@ func (s *UpdateService) Update(apps []string, opts UpdateOptions) []AppUpdateRes
 			bucketScope = ""
 		}
 
-		onBucketStart := func(name string) {
-			if !opts.Quiet {
-				s.ctx.GetLogger().Log(fmt.Sprintf("  %s ...", name))
+		// Refresh buckets and render progress interactively: on a terminal the
+		// per-bucket status lines are rewritten in place while updating, and the
+		// final state is printed once afterwards (no per-event log duplication).
+		if !opts.Quiet {
+			s.ctx.GetLogger().Header("Updating buckets")
+		}
+		var sl *ui.StatusLines
+		onBucketComplete := func(result UpdateResult) {}
+		if !opts.Quiet {
+			sl = ui.NewStatusLines(bucketNames)
+			sl.Start()
+			onBucketComplete = func(result UpdateResult) {
+				sl.SetStatus(result.Name, result.Status, result.Error)
 			}
 		}
-		onBucketComplete := func(result UpdateResult) {
-			if !opts.Quiet {
-				switch result.Status {
+		bucketResults := bucketsSvc.UpdateBuckets(context.Background(), bucketNames, bucketScope, false, nil, onBucketComplete)
+		if sl != nil {
+			sl.Stop()
+		}
+
+		// Final compact record: changed buckets by name, plus a count of the rest.
+		if !opts.Quiet {
+			upToDate := 0
+			for _, r := range bucketResults {
+				switch r.Status {
 				case "updated":
-					s.ctx.GetLogger().Done(result.Name, "updated")
+					s.ctx.GetLogger().Done(r.Name, ui.Green("updated"))
 				case "up-to-date":
-					s.ctx.GetLogger().Skip(result.Name, "up-to-date")
+					upToDate++
 				case "failed":
-					s.ctx.GetLogger().Error(fmt.Sprintf("%s: %v", result.Name, result.Error))
+					msg := "failed"
+					if r.Error != nil {
+						msg = fmt.Sprintf("failed: %v", r.Error)
+					}
+					s.ctx.GetLogger().Error(r.Name + " " + ui.Red(msg))
 				}
 			}
+			if upToDate > 0 {
+				bucketWord := "buckets"
+				if upToDate == 1 {
+					bucketWord = "bucket"
+				}
+				s.ctx.GetLogger().Skip("", fmt.Sprintf("%d %s up-to-date", upToDate, bucketWord))
+			}
 		}
-		_ = bucketsSvc.UpdateBuckets(context.Background(), bucketNames, bucketScope, false, onBucketStart, onBucketComplete)
+
 		// Re-list buckets after update to pick up refreshed manifests.
 		buckets, err = bucketsSvc.List("")
 		if err != nil {
@@ -179,12 +203,12 @@ func (s *UpdateService) Update(apps []string, opts UpdateOptions) []AppUpdateRes
 		}
 	}
 
-	// Print update plan before mutating installed apps.
-	if !opts.Quiet {
+	// Print the update plan before mutating installed apps. Only bulk --all updates get
+	// the plan block; explicit app updates show the version change in each app's own
+	// section (updateSingle) instead of duplicating it here.
+	if !opts.Quiet && opts.All {
 		s.ctx.GetLogger().Header("Checking outdated apps")
-		if opts.All {
-			s.ctx.GetLogger().Log(fmt.Sprintf("You have %d outdated app(s) installed.", len(targets)))
-		}
+		s.ctx.GetLogger().Log(fmt.Sprintf("You have %d outdated app(s) installed.", len(targets)))
 
 		if len(targets) == 1 {
 			s.ctx.GetLogger().Header("Upgrading 1 outdated app")
