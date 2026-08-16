@@ -197,13 +197,19 @@ Release workflow:
 - triggered by `v*` tags or manual dispatch,
 - builds `amd64`, `386`, and `arm64` Windows binaries,
 - runs tests,
-- uploads release artifacts and SHA256 checksums for tag builds.
+- generates artifact attestation (`actions/attest`),
+- a GitHub release with SHA256 checksums is created only for tag pushes; manual dispatch uploads build artifacts but does not create a release.
 
 Nightly workflow:
 
 - scheduled daily and manual,
 - builds all release architectures,
 - publishes/updates the `nightly` prerelease tag.
+
+## Changelog and commits
+
+- Commits use Conventional Commits (`feat:`, `fix(scope):`, `ci(...)`, ...).
+- Repo-local skill `.agents/skills/changelog-skill` converts commits into Keep a Changelog entries for `CHANGELOG.md`; load it for changelog work.
 
 ## Common pitfalls
 

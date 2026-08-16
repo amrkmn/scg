@@ -155,7 +155,7 @@ make build-shim
 - **`bucket update`** and **`bucket unused`** are `scg`-specific bucket subcommands.
 - **`--proxy`** and **`--dry-run`** flags are `scg` extensions.
 - **No Scoop self-update or SQLite cache parity** — `scg` is a standalone CLI, not a Scoop wrapper.
-- **Hook helper support** covers common archive helpers, message helpers, `Invoke-ExternalCommand`, `Find-BucketDirectory`, and standard Scoop runtime variables. Full hook compatibility is not guaranteed; see `.plans/scoop-compatibility-update-and-hooks-plan.md` for detail.
+- **Hook helper support** covers common archive helpers, message helpers, `Invoke-ExternalCommand`, `Find-BucketDirectory`, and standard Scoop runtime variables. Full hook compatibility is not guaranteed.
 
 ## Hook compatibility
 
