@@ -50,7 +50,7 @@ scg download nodejs --arch 64bit`,
 
 			var succeeded, failed int
 			for _, input := range args {
-				if err := downloadOne(ctx, dm, input, arch, !flagForce, flagSkipHash, flagProxy); err != nil {
+				if err := downloadOne(ctx, dm, input, arch, !flagForce, flagSkipHash, flagProxy, scope); err != nil {
 					failed++
 					ctx.GetLogger().Error(fmt.Sprintf("%s: %v", input, err))
 				} else {
@@ -76,16 +76,27 @@ scg download nodejs --arch 64bit`,
 	return cmd
 }
 
-func downloadOne(ctx *app.Context, dm *install.DownloadManager, input, arch string, useCache, skipHash bool, proxy string) error {
-	_, bucket := ctx.Services.Manifests.FindManifestPair(input)
+func downloadOne(ctx *app.Context, dm *install.DownloadManager, input, arch string, useCache, skipHash bool, proxy string, scope scoop.InstallScope) error {
+	// Support 'app@version' like Scoop: generate a manifest for the pinned version
+	// when it differs from the bucket manifest's current version.
+	appRef, version := splitVersionInput(input)
+
+	_, bucket := ctx.Services.Manifests.FindManifestPair(appRef)
 	if bucket == nil {
 		return fmt.Errorf("app not found in any bucket")
 	}
 
-	appName := appNameFromInput(input)
+	appName := appNameFromInput(appRef)
 	manifest := bucket.Manifest
 	if manifest.Version == "" {
 		return fmt.Errorf("manifest doesn't specify a version")
+	}
+	if version != "" && manifest.Version != version {
+		generated, err := install.GenerateManifestForVersion(manifest, appName, version, scope, proxy, ctx.GetVerbose())
+		if err != nil {
+			return fmt.Errorf("version %q not found in manifest for %q: %w", version, appName, err)
+		}
+		manifest = generated
 	}
 
 	urls, err := resolveDownloadURLs(manifest, arch)

@@ -35,6 +35,7 @@ type Manifest struct {
 	PostInstall   any               `json:"post_install"`   // string or []string
 	PreUninstall  any               `json:"pre_uninstall"`  // string or []string
 	PostUninstall any               `json:"post_uninstall"` // string or []string
+	Autoupdate    any               `json:"autoupdate"`     // map: url/hash templates for version pinning
 	Comments      any               `json:"##"`
 }
 

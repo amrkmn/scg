@@ -236,8 +236,14 @@ func (s *InstallService) InstallWithVersion(appInput, version string, opts Insta
 
 	m := bucket.Manifest
 	if m.Version != version {
-		result.Error = fmt.Errorf("version %q not found in manifest for %q (manifest version is %s); version pinning from buckets is not yet supported for versions that differ from the current manifest", version, appName, m.Version)
-		return result
+		// Generate a manifest for the pinned version using the autoupdate template
+		// (Scoop-compatible); apps without autoupdate cannot be pinned.
+		generated, err := install.GenerateManifestForVersion(m, appName, version, opts.Scope, opts.Proxy, s.ctx.GetVerbose())
+		if err != nil {
+			result.Error = fmt.Errorf("version %q not found in manifest for %q: %w", version, appName, err)
+			return result
+		}
+		m = generated
 	}
 
 	arch := opts.Arch
