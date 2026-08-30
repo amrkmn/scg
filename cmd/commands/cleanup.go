@@ -86,24 +86,20 @@ func NewCleanupCommand() *cobra.Command {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Dry("cleanup", "no files will be removed"))
 			}
 
+			// Calculate the output width before cleanup so each result can be streamed
+			// as soon as its app finishes.
+			maxLen := 0
+			for _, t := range targets {
+				if len(t.Name) > maxLen {
+					maxLen = len(t.Name)
+				}
+			}
+
 			var results []service.CleanupResult
 			for _, t := range targets {
 				result := ctx.Services.Cleanup.CleanupApp(t.Name, t.Scope, opts)
 				results = append(results, result)
-			}
-
-			// Find max app name length only from apps that have something to clean.
-			maxLen := 0
-			for _, r := range results {
-				if len(r.OldVersions) > 0 || len(r.FailedVersions) > 0 || len(r.CacheFiles) > 0 {
-					if len(r.App) > maxLen {
-						maxLen = len(r.App)
-					}
-				}
-			}
-
-			for _, r := range results {
-				displayCleanupResult(cmd.OutOrStdout(), cmd.ErrOrStderr(), r, maxLen, flagDryRun)
+				displayCleanupResult(cmd.OutOrStdout(), cmd.ErrOrStderr(), result, maxLen, flagDryRun)
 			}
 
 			// Clean up any remaining .download temp files.
