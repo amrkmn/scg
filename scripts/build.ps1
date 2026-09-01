@@ -12,14 +12,23 @@ if (-not $Version) {
     if ($env:VERSION) {
         $Version = $env:VERSION
     } else {
+        # Base version = latest reachable git tag (e.g. v0.4.6); fall back to v0.0.0.
+        $base = $null
         try {
             $sha = git -C $root rev-parse --short HEAD 2>$null
+            $base = git -C $root describe --tags --abbrev=0 --match 'v*' 2>$null
         } catch {
             $sha = 'unknown'
         }
-        $date = (Get-Date -Format 'yyyy.MM.dd')
+        if (-not $base) {
+            $base = 'v0.0.0'
+        } elseif ($base -match '-') {
+            # Drop any -nightly/-dev suffix (e.g. v0.4.6-nightly.20260901.abc1234 -> v0.4.6).
+            $base = ($base -split '-')[0]
+        }
+        $date = (Get-Date -Format 'yyyyMMdd')
         $time = (Get-Date -Format 'HHmmss')
-        $Version = "v0.0.0-dev.$date.$time.$sha"
+        $Version = "$base-dev.$date.$time.$sha"
     }
 }
 
