@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+env:
+  # Base version for nightly builds; bump when scg's current stable version advances.
+  NIGHTLY_BASE: v0.4.6
+
 jobs:
   nightly:
     runs-on: windows-latest
@@ -17,6 +21,7 @@ jobs:
         arch: [amd64, 386, arm64]
     outputs:
       version: ${{ steps.version.outputs.version }}
+      branch: ${{ steps.version.outputs.branch }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -47,9 +52,11 @@ jobs:
         shell: bash
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
-          DATE=$(date +%Y.%m.%d)
-          VERSION="v0.0.0-nightly.${DATE}.${SHORT_SHA}"
+          DATE=$(date +%Y%m%d)
+          VERSION="${{ env.NIGHTLY_BASE }}-nightly.${DATE}.${SHORT_SHA}"
+          BRANCH="$VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           echo "Building nightly version: $VERSION"
 
       - name: Build and test
@@ -83,14 +90,15 @@ jobs:
           sha256sum *.exe > checksums.txt
           cat checksums.txt
 
-      - name: Update nightly release
+      - name: Publish nightly release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
-          name: Nightly Build
-          tag_name: nightly
+          name: "Nightly ${{ needs.nightly.outputs.version }}"
+          tag_name: ${{ needs.nightly.outputs.version }}
           files: dist/*
           draft: false
           prerelease: true
+          make_latest: false
           body: |
             Automated nightly build from [`${{ github.sha }}`](https://github.com/${{ github.repository }}/commit/${{ github.sha }}).
 
@@ -99,3 +107,35 @@ jobs:
             ⚠️ Development build — may be unstable.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish nightly branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ needs.nightly.outputs.branch }}"
+          cd dist
+          git init -b "$BRANCH"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "nightly build ${{ needs.nightly.outputs.version }}"
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:refs/heads/$BRANCH"
+          echo "Published nightly branch: $BRANCH"
+
+      - name: Prune old nightlies
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Keep the 14 most recent nightly releases (each deleted together with its tag).
+          gh api "repos/${{ github.repository }}/releases?per_page=100" \
+            --jq '.[] | select(.tag_name | test("-nightly\.")) | .tag_name' \
+            | sort | tail -n +15 | while read -r tag; do
+                gh release delete "$tag" --yes
+              done
+          # Keep the 14 most recent nightly branches.
+          gh api "repos/${{ github.repository }}/git/matching-refs/heads/v" \
+            --jq '.[].ref | select(test("-nightly\\."))' \
+            | sort | tail -n +15 | while read -r ref; do
+                branch="${ref#refs/heads/}"
+                gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/$branch" > /dev/null
+              done

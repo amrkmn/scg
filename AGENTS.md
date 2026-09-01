@@ -204,7 +204,8 @@ Nightly workflow:
 
 - scheduled daily and manual,
 - builds all release architectures,
-- publishes/updates the `nightly` prerelease tag.
+- publishes one immutable prerelease per run (tag `<base-version>-nightly.<YYYYMMDD>.<sha>`, base = `env.NIGHTLY_BASE`) and pushes the binaries to a branch with the same name,
+- prunes old nightly releases and branches (keeps the 14 most recent).
 
 ## Changelog and commits
 
