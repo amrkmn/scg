@@ -105,8 +105,7 @@ jobs:
           name: "Nightly ${{ needs.nightly.outputs.version }}"
           tag_name: ${{ needs.nightly.outputs.version }}
           files: dist/*
-          # Immutable-release repos reject asset uploads after publication, so the
-          # release is created as a draft and published by the next step.
+          # Draft first: immutable releases reject asset uploads after publication.
           draft: true
           prerelease: true
           make_latest: false
@@ -144,19 +143,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Keep the 14 most recent nightly releases (each deleted together with its tag).
-          # Immutable-release repos forbid deleting releases, so failures are tolerated.
-          # Worked example with 15 tags dated ascending t01(oldest)..t15(newest, incl. just-published):
-          # sort -r yields t15..t01 (newest-first); tail -n +15 yields t01 only,
-          # so the 14 newest (t02..t15) are kept and only the oldest is deleted.
+          # Keep the 14 newest releases (tags go with them); tolerate immutable-release failures.
+          # E.g. tags t01..t15: sort -r gives t15..t01, tail -n +15 yields t01 (oldest) only.
           gh api "repos/${{ github.repository }}/releases?per_page=100" \
             --jq '.[] | select(.tag_name | test("-nightly\.")) | .tag_name' \
             | sort -r | tail -n +15 | while read -r tag; do
                 gh release delete "$tag" --yes || echo "warning: could not delete release $tag (immutable releases)"
               done
-          # Keep the 14 most recent nightly branches.
-          # Same ordering logic as above: sort -r is newest-first, so tail -n +15
-          # selects only entries older than the 14 most recent for deletion.
+          # Keep the 14 newest branches (same newest-first ordering as above).
           gh api "repos/${{ github.repository }}/git/matching-refs/heads/v" \
             --jq '.[].ref | select(test("-nightly\\."))' \
             | sort -r | tail -n +15 | while read -r ref; do
