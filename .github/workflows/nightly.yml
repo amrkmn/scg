@@ -59,12 +59,16 @@ jobs:
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           echo "Building nightly version: $VERSION"
 
-      - name: Build and test
+      - name: Build
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           powershell -NoProfile -File scripts/build.ps1 -Arch ${{ matrix.arch }} -Version $env:VERSION
-          make test
+
+      - name: Run tests
+        # Arch-independent (go test ./...); run once instead of on every leg.
+        if: matrix.arch == 'amd64'
+        run: make test
 
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
