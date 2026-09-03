@@ -91,12 +91,15 @@ jobs:
           cat checksums.txt
 
       - name: Publish nightly release
+        id: release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
           name: "Nightly ${{ needs.nightly.outputs.version }}"
           tag_name: ${{ needs.nightly.outputs.version }}
           files: dist/*
-          draft: false
+          # Immutable-release repos reject asset uploads after publication, so the
+          # release is created as a draft and published by the next step.
+          draft: true
           prerelease: true
           make_latest: false
           body: |
@@ -107,6 +110,13 @@ jobs:
             ⚠️ Development build — may be unstable.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X PATCH "repos/${{ github.repository }}/releases/${{ steps.release.outputs.id }}" -F draft=false
+          echo "Published nightly release: ${{ needs.nightly.outputs.version }}"
 
       - name: Publish nightly branch
         env:
@@ -127,15 +137,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Keep the 14 most recent nightly releases (each deleted together with its tag).
+          # Immutable-release repos forbid deleting releases, so failures are tolerated.
+          # Worked example with 15 tags dated ascending t01(oldest)..t15(newest, incl. just-published):
+          # sort -r yields t15..t01 (newest-first); tail -n +15 yields t01 only,
+          # so the 14 newest (t02..t15) are kept and only the oldest is deleted.
           gh api "repos/${{ github.repository }}/releases?per_page=100" \
             --jq '.[] | select(.tag_name | test("-nightly\.")) | .tag_name' \
-            | sort | tail -n +15 | while read -r tag; do
-                gh release delete "$tag" --yes
+            | sort -r | tail -n +15 | while read -r tag; do
+                gh release delete "$tag" --yes || echo "warning: could not delete release $tag (immutable releases)"
               done
           # Keep the 14 most recent nightly branches.
+          # Same ordering logic as above: sort -r is newest-first, so tail -n +15
+          # selects only entries older than the 14 most recent for deletion.
           gh api "repos/${{ github.repository }}/git/matching-refs/heads/v" \
             --jq '.[].ref | select(test("-nightly\\."))' \
-            | sort | tail -n +15 | while read -r ref; do
+            | sort -r | tail -n +15 | while read -r ref; do
                 branch="${ref#refs/heads/}"
                 gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/$branch" > /dev/null
               done
