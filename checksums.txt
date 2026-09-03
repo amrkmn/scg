@@ -1,0 +1,3 @@
+90d9dd0c4abdd485b3287044c012ec99ae95c73eb80a1aacb58aa5a6ed9d5f1b  scg-386.exe
+eb5e95daadb7d29362bbdbb2276d1a3a62c7b4ac546bfe55e2a0719195afea97  scg-amd64.exe
+b8de44d674b4d876d8c4ae5569b46b7c5db0d4cad8382de4ae888d9693f7b4be  scg-arm64.exe
