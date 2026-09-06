@@ -5,6 +5,12 @@ on:
     # Run at 2:00 AM UTC every day
     - cron: "0 2 * * *"
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Force a new nightly build even if this commit already has one"
+        required: false
+        default: false
+        type: boolean
 
 # Same-day runs compute identical versions; queue instead of racing.
 concurrency:
@@ -19,7 +25,41 @@ env:
   NIGHTLY_BASE: v0.4.6
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Check for existing nightly build
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "${{ inputs.force }}" == "true" ]]; then
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "Forced build — skipping duplicate check."
+            exit 0
+          fi
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "Current commit short SHA: $SHORT_SHA"
+          MATCH=$(gh api "repos/${{ github.repository }}/releases?per_page=100" \
+            --jq --arg sha "$SHORT_SHA" '[.[] | select(.tag_name | test("\\." + $sha + "$")) | .tag_name] | .[0] // empty')
+          if [[ -n "$MATCH" ]]; then
+            echo "Found existing nightly for this commit: $MATCH — skipping."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "No existing nightly for commit $SHORT_SHA — proceeding."
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
   nightly:
+    needs: check
+    if: needs.check.outputs.skip != 'true'
     runs-on: windows-latest
     strategy:
       matrix:
@@ -82,7 +122,8 @@ jobs:
           retention-days: 7
 
   release:
-    needs: nightly
+    needs: [check, nightly]
+    if: needs.check.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
