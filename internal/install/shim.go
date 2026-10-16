@@ -150,14 +150,24 @@ func createSingleShim(def ShimDef, appCurrentDir, shimDir string) error {
 		return fmt.Errorf("failed to create shim directory: %w", err)
 	}
 
+	// Like Scoop, only real executables get the .exe+.shim pair.
+	// Scripts get .cmd/.ps1 wrappers plus an extensionless sh wrapper.
+	switch strings.ToLower(filepath.Ext(absTarget)) {
+	case ".exe", ".com":
+		return writeExeShim(def, absTarget, appCurrentDir, shimDir)
+	default:
+		return writeScriptShim(def, absTarget, appCurrentDir, shimDir)
+	}
+}
+
+// writeExeShim writes the .shim file and copies the shim executable.
+func writeExeShim(def ShimDef, absTarget, appCurrentDir, shimDir string) error {
 	// Write the .shim file.
 	shimFilePath := filepath.Join(shimDir, def.Name+".shim")
 	shimContent := fmt.Sprintf("path = \"%s\"\n", absTarget)
 	if def.Args != "" {
 		// Expand Scoop variables using the APP directory (not the resolved target).
-		expanded := def.Args
-		expanded = strings.ReplaceAll(expanded, "$dir", appCurrentDir)
-		expanded = strings.ReplaceAll(expanded, "$original_dir", appCurrentDir)
+		expanded := expandShimArgs(def.Args, appCurrentDir)
 		// Normalize to forward slashes like Scoop.
 		shimContent += fmt.Sprintf("args = %s\n", filepath.ToSlash(expanded))
 	}
@@ -172,6 +182,142 @@ func createSingleShim(def ShimDef, appCurrentDir, shimDir string) error {
 	}
 
 	return nil
+}
+
+// expandShimArgs expands Scoop directory variables in shim args.
+func expandShimArgs(args, appCurrentDir string) string {
+	expanded := args
+	expanded = strings.ReplaceAll(expanded, "$dir", appCurrentDir)
+	expanded = strings.ReplaceAll(expanded, "$original_dir", appCurrentDir)
+	return expanded
+}
+
+// writeScriptShim writes Scoop-compatible wrappers for non-executable targets
+// (.ps1, .cmd/.bat, .jar, .py, ...): a .cmd wrapper plus an extensionless sh
+// wrapper, and for .ps1 additionally a .ps1 proxy. No .exe/.shim pair, since
+// the shim binary can only launch real executables.
+func writeScriptShim(def ShimDef, absTarget, appCurrentDir, shimDir string) error {
+	arg := expandShimArgs(def.Args, appCurrentDir)
+	for name, content := range scriptShimFiles(def.Name, absTarget, arg, shimDir) {
+		if err := os.WriteFile(filepath.Join(shimDir, name), []byte(content), 0o644); err != nil {
+			return fmt.Errorf("failed to write shim wrapper %q: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// scriptShimFiles returns the wrapper files for a non-executable shim target,
+// mirroring Scoop's shim() in lib/core.ps1. resolved must be absolute.
+// .cmd/.ps1 files use CRLF; extensionless sh wrappers use LF with no trailing
+// newline.
+func scriptShimFiles(name, resolved, arg, shimDir string) map[string]string {
+	files := make(map[string]string)
+	ext := strings.ToLower(filepath.Ext(resolved))
+	crlf := func(lines ...string) string { return strings.Join(lines, "\r\n") }
+	lf := func(lines ...string) string { return strings.Join(lines, "\n") }
+
+	switch ext {
+	case ".ps1":
+		// Reference the target relative to the shim dir when possible so
+		// shims survive directory moves, like Scoop's Join-Path approach.
+		pathRef := `"` + resolved + `"`
+		if rel, err := filepath.Rel(shimDir, resolved); err == nil {
+			pathRef = `Join-Path $PSScriptRoot "` + rel + `"`
+		}
+		files[name+".ps1"] = crlf(
+			`# `+resolved,
+			`$path = `+pathRef,
+			`if ($MyInvocation.ExpectingInput) { $input | & $path `+arg+` @args } else { & $path `+arg+` @args }`,
+			`exit $LASTEXITCODE`,
+		)
+		files[name+".cmd"] = crlf(
+			`@rem `+resolved,
+			`@echo off`,
+			`where /q pwsh.exe`,
+			`if %errorlevel% equ 0 (`,
+			`    pwsh -noprofile -ex unrestricted -file "`+resolved+`" `+arg+` %*`,
+			`) else (`,
+			`    powershell -noprofile -ex unrestricted -file "`+resolved+`" `+arg+` %*`,
+			`)`,
+		)
+		files[name] = lf(
+			`#!/bin/sh`,
+			`# `+resolved,
+			`if command -v pwsh.exe > /dev/null 2>&1; then`,
+			`    pwsh.exe -noprofile -ex unrestricted -file "`+resolved+`" `+arg+` "$@"`,
+			`else`,
+			`    powershell.exe -noprofile -ex unrestricted -file "`+resolved+`" `+arg+` "$@"`,
+			`fi`,
+		)
+	case ".bat", ".cmd":
+		files[name+".cmd"] = crlf(
+			`@rem `+resolved,
+			`@"`+resolved+`" `+arg+` %*`,
+		)
+		files[name] = lf(
+			`#!/bin/sh`,
+			`# `+resolved,
+			`MSYS2_ARG_CONV_EXCL=/C cmd.exe /C "`+resolved+`" `+arg+` "$@"`,
+		)
+	case ".jar":
+		parent := filepath.Dir(resolved)
+		files[name+".cmd"] = crlf(
+			`@rem `+resolved,
+			`@pushd `+parent,
+			`@java -jar "`+resolved+`" `+arg+` %*`,
+			`@popd`,
+		)
+		files[name] = lf(
+			`#!/bin/sh`,
+			`# `+resolved,
+			`if [ $WSL_INTEROP ]`,
+			`then`,
+			`  cd $(wslpath -u '`+parent+`')`,
+			`else`,
+			`  cd $(cygpath -u '`+parent+`')`,
+			`fi`,
+			`java.exe -jar "`+resolved+`" `+arg+` "$@"`,
+		)
+	case ".py":
+		files[name+".cmd"] = crlf(
+			`@rem `+resolved,
+			`@python "`+resolved+`" `+arg+` %*`,
+		)
+		files[name] = lf(
+			`#!/bin/sh`,
+			`# `+resolved,
+			`python.exe "`+resolved+`" `+arg+` "$@"`,
+		)
+	default:
+		quoted := ""
+		if arg != "" {
+			quoted = `"` + arg + `"`
+		}
+		files[name+".cmd"] = crlf(
+			`@rem `+resolved,
+			`@echo off`,
+			`bash -c "command -v wslpath >/dev/null"`,
+			`if %errorlevel% equ 0 (`,
+			`  bash "$(wslpath -u '`+resolved+`')" `+quoted+` %*`,
+			`) else (`,
+			`  set args=`+quoted+` %*`,
+			`  setlocal enabledelayedexpansion`,
+			`  if not "!args!"=="" set args=!args:"=""!`,
+			`  bash -c "$(cygpath -u '`+resolved+`') !args!"`,
+			`)`,
+		)
+		files[name] = lf(
+			`#!/bin/sh`,
+			`# `+resolved,
+			`if [ $WSL_INTEROP ]`,
+			`then`,
+			`  "$(wslpath -u '`+resolved+`')" `+arg+` "$@"`,
+			`else`,
+			`  "$(cygpath -u '`+resolved+`')" `+arg+` "$@"`,
+			`fi`,
+		)
+	}
+	return files
 }
 
 // RemoveShims removes all shim files for the given app name and bin definitions.
@@ -191,6 +337,11 @@ func RemoveShims(shims []ShimDef, scope scoop.InstallScope) error {
 		// Also try removing .cmd wrapper (scoop creates these too).
 		cmdPath := filepath.Join(paths.Shims, def.Name+".cmd")
 		_ = os.Remove(cmdPath)
+
+		// Script targets (.ps1, .py, ...) get a .ps1 proxy and an
+		// extensionless sh wrapper instead of an .exe (see writeScriptShim).
+		_ = os.Remove(filepath.Join(paths.Shims, def.Name+".ps1"))
+		_ = os.Remove(filepath.Join(paths.Shims, def.Name))
 	}
 
 	return nil

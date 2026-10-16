@@ -14,7 +14,7 @@ function Assert-BuildTools {
         $missing += "  - go: install Go 1.26+ from https://go.dev/dl/ and ensure 'go' is on PATH."
     }
     if (-not (Get-Command 'zig' -ErrorAction SilentlyContinue)) {
-        $missing += "  - zig: install Zig 0.16.0 (see https://ziglang.org/download/) and ensure 'zig' is on PATH."
+        $missing += "  - zig: install Zig 0.17.0 (see https://ziglang.org/download/) and ensure 'zig' is on PATH."
     }
     if (-not (Get-Command 'git' -ErrorAction SilentlyContinue)) {
         $missing += "  - git: install Git from https://git-scm.com/downloads and ensure 'git' is on PATH."

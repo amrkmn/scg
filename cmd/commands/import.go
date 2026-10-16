@@ -17,6 +17,7 @@ import (
 
 func NewImportCommand() *cobra.Command {
 	var flagGlobal bool
+	var flagJobs int
 
 	cmd := &cobra.Command{
 		Use:     "import <file>",
@@ -54,7 +55,7 @@ func NewImportCommand() *cobra.Command {
 				ctx.GetLogger().Warn(err.Error())
 			}
 
-			if err := importApps(ctx, exportData, flagGlobal); err != nil {
+			if err := importApps(ctx, exportData, flagGlobal, flagJobs); err != nil {
 				ctx.GetLogger().Warn(err.Error())
 			}
 
@@ -63,6 +64,7 @@ func NewImportCommand() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVarP(&flagGlobal, "global", "g", false, "Install apps globally")
+	cmd.Flags().IntVarP(&flagJobs, "jobs", "j", 0, "Max parallel downloads and extracts (default 4, or SCG_DOWNLOAD_CONCURRENCY)")
 	return cmd
 }
 
@@ -122,7 +124,7 @@ func importBuckets(ctx *app.Context, data map[string]any) error {
 	return nil
 }
 
-func importApps(ctx *app.Context, data map[string]any, forceGlobal bool) error {
+func importApps(ctx *app.Context, data map[string]any, forceGlobal bool, jobs int) error {
 	apps, ok := data["apps"]
 	if !ok {
 		return nil
@@ -134,6 +136,14 @@ func importApps(ctx *app.Context, data map[string]any, forceGlobal bool) error {
 	}
 
 	ctx.GetLogger().Header(fmt.Sprintf("Importing %d app(s)", len(appList)))
+
+	type pendingApp struct {
+		installName string
+		plainName   string
+		held        bool
+	}
+	var userApps, globalApps []pendingApp
+	heldAfter := map[string]scoop.InstallScope{}
 
 	for _, a := range appList {
 		am, ok := a.(map[string]any)
@@ -181,28 +191,56 @@ func importApps(ctx *app.Context, data map[string]any, forceGlobal bool) error {
 			installName = source + "/" + name
 		}
 
-		ctx.GetLogger().Header(fmt.Sprintf("Installing %s", installName))
-
-		if global {
-			ctx.GetLogger().Detail("global scope")
+		if held {
+			heldAfter[plainName] = scope
 		}
-
-		result := ctx.Services.Installer.InstallSingle(installName, service.InstallOptions{
-			Scope: scope,
-		})
-		if !result.Success && !result.Skipped {
-			ctx.GetLogger().Error(fmt.Sprintf("failed to install %s: %v", installName, result.Error))
-		} else if result.Skipped {
-			ctx.GetLogger().Skip(installName, "already installed")
+		if global {
+			globalApps = append(globalApps, pendingApp{installName: installName, plainName: plainName, held: held})
 		} else {
-			if held {
-				if err := ctx.Services.Apps.SetHold(plainName, scope, true); err != nil {
-					ctx.GetLogger().Warn(fmt.Sprintf("failed to hold %s: %v", plainName, err))
-				} else {
-					ctx.GetLogger().Done(plainName, "held")
-				}
+			userApps = append(userApps, pendingApp{installName: installName, plainName: plainName, held: held})
+		}
+	}
+
+	installGroup := func(pending []pendingApp, scope scoop.InstallScope) {
+		if len(pending) == 0 {
+			return
+		}
+		names := make([]string, 0, len(pending))
+		for _, pa := range pending {
+			names = append(names, pa.installName)
+		}
+		results := ctx.Services.Installer.Install(names, service.InstallOptions{
+			Scope:               scope,
+			DownloadConcurrency: jobs,
+		})
+		for i, r := range results {
+			label := pending[i].installName
+			if !r.Success && !r.Skipped {
+				ctx.GetLogger().Error(fmt.Sprintf("failed to install %s: %v", label, r.Error))
+				continue
 			}
-			ctx.GetLogger().Done(name, "installed")
+			if r.Skipped {
+				ctx.GetLogger().Skip(label, "already installed")
+				continue
+			}
+			ctx.GetLogger().Done(pending[i].plainName, "installed")
+		}
+	}
+
+	// Install sequentially per scope so filesystem/PATH mutations stay safe;
+	// downloads for each group are pre-fetched in parallel by Install.
+	installGroup(userApps, scoop.ScopeUser)
+	installGroup(globalApps, scoop.ScopeGlobal)
+
+	for name, scope := range heldAfter {
+		installed, _ := ctx.Services.Apps.GetInstalledApp(name, scope)
+		if installed == nil || installed.Held {
+			continue
+		}
+		if err := ctx.Services.Apps.SetHold(name, scope, true); err != nil {
+			ctx.GetLogger().Warn(fmt.Sprintf("failed to hold %s: %v", name, err))
+		} else {
+			ctx.GetLogger().Done(name, "held")
 		}
 	}
 

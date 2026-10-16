@@ -25,7 +25,7 @@ Use the real Scoop installation as the compatibility reference when behavior is 
 ## Build prerequisites
 
 - Go 1.26+ (`go.mod` uses `go 1.26`; CI uses `stable`).
-- Zig 0.16.0 for building the embedded shim.
+- Zig 0.17.0 for building the embedded shim.
 - Windows for normal runtime behavior and CI parity.
 
 The shim binary is generated from `shim/src/main.zig` and copied to `internal/install/assets/shim.exe`, which is embedded by `internal/install/shim.go`.

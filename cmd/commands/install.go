@@ -18,6 +18,7 @@ import (
 func NewInstallCommand() *cobra.Command {
 	var flagGlobal, flagIndependent, flagNoCache, flagSkipHash bool
 	var flagArch, flagProxy string
+	var flagJobs int
 
 	cmd := &cobra.Command{
 		Use:   "install <app> [app...] [url] [file.json] [app@version]",
@@ -47,12 +48,13 @@ Supports app names, bucket-scoped names, URLs, local manifest files, and version
 			}
 
 			opts := service.InstallOptions{
-				Scope:       scope,
-				Independent: flagIndependent,
-				NoCache:     flagNoCache,
-				SkipHash:    flagSkipHash,
-				Arch:        flagArch,
-				Proxy:       flagProxy,
+				Scope:               scope,
+				Independent:         flagIndependent,
+				NoCache:             flagNoCache,
+				SkipHash:            flagSkipHash,
+				Arch:                flagArch,
+				Proxy:               flagProxy,
+				DownloadConcurrency: flagJobs,
 			}
 
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Heading(formatInstallHeading(args, scope)))
@@ -86,28 +88,41 @@ Supports app names, bucket-scoped names, URLs, local manifest files, and version
 	cmd.Flags().BoolVarP(&flagSkipHash, "skip-hash-check", "s", false, "Skip hash validation")
 	cmd.Flags().StringVar(&flagArch, "arch", "", "Use the specified architecture (64bit, 32bit, arm64)")
 	cmd.Flags().StringVar(&flagProxy, "proxy", "", "Download via proxy URL")
+	cmd.Flags().IntVarP(&flagJobs, "jobs", "j", 0, "Max parallel downloads and extracts (default 4, or SCG_DOWNLOAD_CONCURRENCY)")
 
 	return cmd
 }
 
 // dispatchInstall routes each input to the appropriate install method based on its type.
+// Plain app names are batched into a single Install call so multi-app
+// installs pre-fetch downloads in parallel; URL/file/version inputs are
+// still handled individually, in order.
 func dispatchInstall(ctx *app.Context, args []string, opts service.InstallOptions) []service.InstallResult {
 	var results []service.InstallResult
+	var pendingApps []string
+	flush := func() {
+		if len(pendingApps) > 0 {
+			results = append(results, ctx.Services.Installer.Install(pendingApps, opts)...)
+			pendingApps = nil
+		}
+	}
 	for _, arg := range args {
 		switch classifyInstallInput(arg) {
 		case "url":
+			flush()
 			results = append(results, ctx.Services.Installer.InstallFromURL(arg, opts))
 		case "file":
+			flush()
 			results = append(results, ctx.Services.Installer.InstallFromFile(arg, opts))
 		case "version":
+			flush()
 			name, version := splitVersionInput(arg)
 			results = append(results, ctx.Services.Installer.InstallWithVersion(name, version, opts))
 		default:
-			// Normal app name — delegate to the Install method (handles deps, etc.)
-			dummy := []string{arg}
-			results = append(results, ctx.Services.Installer.Install(dummy, opts)...)
+			pendingApps = append(pendingApps, arg)
 		}
 	}
+	flush()
 	return results
 }
 
