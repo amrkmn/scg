@@ -32,8 +32,10 @@ func RunHook(hookType, script, appDir string, envVars map[string]string) error {
 
 	// Construct the full script.
 	var fullScript strings.Builder
+	fullScript.Grow(len(prelude) + 1 + len(script))
 	if prelude != "" {
-		fullScript.WriteString(prelude + "\n")
+		fullScript.WriteString(prelude)
+		fullScript.WriteByte('\n')
 	}
 	fullScript.WriteString(script)
 
