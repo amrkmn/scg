@@ -1,5 +1,14 @@
-# Variables
-VERSION ?= v0.1.0
+# Version stamp. No default on purpose: when VERSION is unset (the
+# common local case), scripts/build.ps1 computes a -dev version from
+# git instead. Pass VERSION explicitly for stamped builds, e.g.
+# `make build-all VERSION=v1.2.3` (release/nightly CI does this).
+ifdef VERSION
+VERSION_ENV := VERSION=$(VERSION)
+VERSION_LDFLAG := -X main.Version=$(VERSION)
+else
+VERSION_ENV :=
+VERSION_LDFLAG :=
+endif
 
 .PHONY: build build-amd64 build-386 build-arm64 build-all
 .PHONY: build-shim
@@ -16,16 +25,16 @@ build-shim:
 	cp shim/zig-out/bin/shim.exe internal/install/assets/shim.exe
 
 build-amd64:
-	@VERSION=$(VERSION) powershell -NoProfile -File scripts/build.ps1 -Arch amd64
+	@$(VERSION_ENV) powershell -NoProfile -File scripts/build.ps1 -Arch amd64
 
 build-386:
-	@VERSION=$(VERSION) powershell -NoProfile -File scripts/build.ps1 -Arch 386
+	@$(VERSION_ENV) powershell -NoProfile -File scripts/build.ps1 -Arch 386
 
 build-arm64:
-	@VERSION=$(VERSION) powershell -NoProfile -File scripts/build.ps1 -Arch arm64
+	@$(VERSION_ENV) powershell -NoProfile -File scripts/build.ps1 -Arch arm64
 
 build-all:
-	@VERSION=$(VERSION) powershell -NoProfile -File scripts/build.ps1 -All
+	@$(VERSION_ENV) powershell -NoProfile -File scripts/build.ps1 -All
 
 install:
 	go mod download
@@ -50,7 +59,7 @@ check: fmt lint test
 	@echo All checks passed!
 
 run:
-	go run -ldflags "-X main.Version=$(VERSION)" ./cmd $(ARGS)
+	go run -ldflags "$(VERSION_LDFLAG)" ./cmd $(ARGS)
 
 # CI targets
 ci-test: build-shim build test
