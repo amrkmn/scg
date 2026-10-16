@@ -3,5 +3,6 @@ dist/
 
 shim/.zig-cache/
 shim/zig-out/
+shim/zig-pkg/
 
 internal/install/assets/*

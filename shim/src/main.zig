@@ -7,18 +7,15 @@ comptime {
     }
 }
 
-const win32 = @cImport({
-    if (builtin.cpu.arch == .x86) {
-        @cDefine("_X86_", "1");
-    }
-    @cInclude("windows.h");
-    @cInclude("shellapi.h");
-    @cInclude("shlwapi.h");
-});
+// Win32 bindings via the ZSF translate-c package (Zig 0.17 removed @cImport).
+// The translated headers live in src/win32.h; see build.zig.
+const win32 = @import("c");
 
 const DIR_PLACEHOLDER = "%~dp0";
 
-fn ctrlHandler(_: win32.DWORD) callconv(.c) win32.BOOL {
+// Note: must be stdcall (.winapi); on x86 the translated
+// SetConsoleCtrlHandler prototype requires a stdcall callback.
+fn ctrlHandler(_: win32.DWORD) callconv(.winapi) win32.BOOL {
     return win32.TRUE;
 }
 
@@ -217,7 +214,7 @@ fn spawnWithJob(allocator: std.mem.Allocator, path: []const u8, shim_args: ?[]co
     si.cb = @sizeOf(win32.STARTUPINFOW);
     var pi: win32.PROCESS_INFORMATION = std.mem.zeroes(win32.PROCESS_INFORMATION);
 
-    const cmdline_buf = try allocator.dupeZ(u16, cmdline_utf16);
+    const cmdline_buf = try allocator.dupeSentinel(u16, cmdline_utf16, 0);
     defer allocator.free(cmdline_buf);
 
     const create_result = win32.CreateProcessW(
