@@ -20,7 +20,7 @@ build:
 	@powershell -NoProfile -File scripts/build.ps1
 
 build-shim:
-	cd shim && zig build
+	cd shim && zig build --release=small
 	@mkdir -p internal/install/assets
 	cp shim/zig-out/bin/shim.exe internal/install/assets/shim.exe
 
