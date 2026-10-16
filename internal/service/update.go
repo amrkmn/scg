@@ -13,16 +13,17 @@ import (
 
 // UpdateOptions configures an update operation.
 type UpdateOptions struct {
-	Scope       scoop.InstallScope
-	Independent bool
-	NoCache     bool
-	SkipHash    bool
-	Arch        string
-	Proxy       string
-	Force       bool
-	All         bool
-	DryRun      bool
-	Quiet       bool
+	Scope               scoop.InstallScope
+	Independent         bool
+	NoCache             bool
+	SkipHash            bool
+	Arch                string
+	Proxy               string
+	Force               bool
+	All                 bool
+	DryRun              bool
+	Quiet               bool
+	DownloadConcurrency int // Max parallel downloads; <=0 means auto (SCG_DOWNLOAD_CONCURRENCY or default)
 }
 
 // AppUpdateResult holds the outcome of updating a single app.
@@ -224,6 +225,11 @@ func (s *UpdateService) Update(apps []string, opts UpdateOptions) []AppUpdateRes
 
 	results := make([]AppUpdateResult, 0, len(targets)+len(failedLookups))
 	results = append(results, failedLookups...)
+	if len(targets) > 1 && !opts.DryRun {
+		// Pre-warm all downloads before the first uninstall so one slow
+		// host doesn't hold the user's apps half-uninstalled.
+		_ = s.prefetchUpdateTargets(targets, needsAttention, opts)
+	}
 	for _, app := range targets {
 		start := time.Now()
 		result := s.updateSingle(app, needsAttention[appKey(app.Name, app.Scope)], opts)

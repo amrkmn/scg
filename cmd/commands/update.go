@@ -16,6 +16,7 @@ func NewUpdateCommand() *cobra.Command {
 	var (
 		flagGlobal, flagIndependent, flagNoCache, flagSkipHash, flagForce, flagAll, flagDryRun, flagQuiet bool
 		flagArch, flagProxy                                                                               string
+		flagJobs                                                                                          int
 	)
 
 	cmd := &cobra.Command{
@@ -46,16 +47,17 @@ without arguments requires explicit targets; it does not self-update Scoop.`,
 			}
 
 			opts := service.UpdateOptions{
-				Scope:       scope,
-				Independent: flagIndependent,
-				NoCache:     flagNoCache,
-				SkipHash:    flagSkipHash,
-				Arch:        flagArch,
-				Proxy:       flagProxy,
-				Force:       flagForce,
-				All:         flagAll,
-				DryRun:      flagDryRun,
-				Quiet:       flagQuiet,
+				Scope:               scope,
+				Independent:         flagIndependent,
+				NoCache:             flagNoCache,
+				SkipHash:            flagSkipHash,
+				Arch:                flagArch,
+				Proxy:               flagProxy,
+				Force:               flagForce,
+				All:                 flagAll,
+				DryRun:              flagDryRun,
+				Quiet:               flagQuiet,
+				DownloadConcurrency: flagJobs,
 			}
 
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Heading(formatUpdateHeading(args, scope)))
@@ -98,6 +100,7 @@ without arguments requires explicit targets; it does not self-update Scoop.`,
 	cmd.Flags().BoolVarP(&flagQuiet, "quiet", "q", false, "Suppress non-essential output")
 	cmd.Flags().StringVar(&flagArch, "arch", "", "Use the specified architecture (64bit, 32bit, arm64)")
 	cmd.Flags().StringVar(&flagProxy, "proxy", "", "Download via proxy URL")
+	cmd.Flags().IntVarP(&flagJobs, "jobs", "j", 0, "Max parallel downloads and extracts (default 4, or SCG_DOWNLOAD_CONCURRENCY)")
 
 	return cmd
 }
